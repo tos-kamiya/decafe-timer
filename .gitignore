@@ -1,0 +1,36 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+build/
+dist/
+.eggs/
+.cache/
+.mypy_cache/
+.pytest_cache/
+coverage.*
+htmlcov/
+# Virtual environments
+.venv/
+venv/
+.env
+.env.*
+
+# Editor/IDE settings
+.vscode/
+.idea/
+*.swp
+
+# Runtime state
+*.log
+*.bak
+.timer_state.json
+
+# Node / JavaScript
+node_modules/
+
+# Misc
+.DS_Store
