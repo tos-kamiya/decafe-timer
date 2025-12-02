@@ -21,13 +21,19 @@ STATE_FILE = CACHE_DIR / "timer_state.json"
 COLORED_CONSOLE = Console(markup=False, highlight=False)
 PLAIN_CONSOLE = Console(color_system=None, markup=False, highlight=False)
 
+ASCII_EXPIRED_MESSAGE = "You may drink coffee now."
+
 
 def _get_console(*, one_line: bool = False, graph_only: bool = False) -> Console:
     return PLAIN_CONSOLE if (one_line or graph_only) else COLORED_CONSOLE
 
 
+def _print_ascii_expired(console: Console):
+    console.print(f"[{ASCII_EXPIRED_MESSAGE}]")
+
+
+ONE_LINE_BAR_WIDTH = len(ASCII_EXPIRED_MESSAGE)
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
-ONE_LINE_BAR_WIDTH = 20
 BAR_FILLED_CHAR = "█"
 BAR_EMPTY_CHAR = "░"
 
@@ -163,10 +169,7 @@ def run_timer_loop(
         except Exception:
             pass
         if one_line or graph_only:
-            console.print(
-                _render_one_line(0, duration_sec, graph_only=graph_only),
-                markup=False,
-            )
+            _print_ascii_expired(console)
         else:
             console.print("Cooldown already expired! ☕")
         return
@@ -250,8 +253,7 @@ def _print_one_line_status(
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        line = _render_one_line(0, duration_sec, graph_only=graph_only)
-        console.print(line, markup=False)
+        _print_ascii_expired(console)
         return
 
     line = _render_one_line(
@@ -298,10 +300,7 @@ def resume_timer(*, one_line=False, graph_only=False):
     state = load_state()
     if state is None:
         if one_line or graph_only:
-            console.print(
-                _render_one_line(0, 0, graph_only=graph_only),
-                markup=False,
-            )
+            _print_ascii_expired(console)
         else:
             console.print("No active timer.")
         return
@@ -313,10 +312,7 @@ def resume_timer(*, one_line=False, graph_only=False):
         except Exception:
             pass
         if one_line or graph_only:
-            console.print(
-                _render_one_line(0, duration_sec, graph_only=graph_only),
-                markup=False,
-            )
+            _print_ascii_expired(console)
         else:
             console.print("Cooldown already expired! ☕")
         return
