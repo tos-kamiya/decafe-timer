@@ -8,6 +8,7 @@
 ## Table of Contents
 
 - [Installation](#installation)
+- [Usage](#usage)
 - [License](#license)
 
 ## Installation
@@ -15,6 +16,16 @@
 ```console
 pip install decafe-timer
 ```
+
+## Usage
+
+Start a new cooldown by passing the duration as a positional argument. Durations accept either `HH:MM:SS` or a shorthand like `2h30m`, `15m`, or `45s`.
+
+```console
+decafe-timer 2h
+```
+
+Running the command without arguments resumes any active timer (expired timers are cleaned up automatically).
 
 ## License
 
