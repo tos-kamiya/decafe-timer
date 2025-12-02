@@ -1,0 +1,54 @@
+Script started on 2025-12-02 17:56:54+09:00 [COMMAND="npx codex" TERM="xterm-256color" TTY="/dev/pts/7" COLUMNS="80" LINES="53"]
+⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K[1G[0JNeed to install the following packages:
+codex@0.2.3
+Ok to proceed? (y) [20Gy
+
+⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K[1mnpm[22m [33mwarn[39m [94mEBADENGINE[39m Unsupported engine {
+[1mnpm[22m [33mwarn[39m [94mEBADENGINE[39m   package: [32m'connect@1.8.7'[39m,
+[1mnpm[22m [33mwarn[39m [94mEBADENGINE[39m   required: { node: [32m'>= 0.4.1 < 0.7.0'[39m },
+[1mnpm[22m [33mwarn[39m [94mEBADENGINE[39m   current: { node: [32m'v22.20.0'[39m, npm: [32m'11.6.3'[39m }
+[1mnpm[22m [33mwarn[39m [94mEBADENGINE[39m }
+⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K[1mnpm[22m [33mwarn[39m [94mdeprecated[39m graceful-fs@1.1.14: please upgrade to graceful-fs 4 for compatibility with current and future versions of Node.js
+⠇[1G[0K[1mnpm[22m [33mwarn[39m [94mdeprecated[39m rimraf@2.0.3: Rimraf versions prior to v4 are no longer supported
+⠇[1G[0K[1mnpm[22m [33mwarn[39m [94mdeprecated[39m github-flavored-markdown@1.0.1: This project is long out of date. Use 'marked' instead.
+⠇[1G[0K[1mnpm[22m [33mwarn[39m [94mdeprecated[39m formidable@1.0.17: Please upgrade to latest, formidable@v2 or formidable@v3! Check these notes: https://bit.ly/2ZEqIau
+⠇[1G[0K[1mnpm[22m [33mwarn[39m [94mdeprecated[39m mkdirp@0.3.0: Legacy versions of mkdirp are no longer supported. Please update to mkdirp 1.x. (Note that the API surface has changed to use Promises in 1.x.)
+⠇[1G[0K⠏[1G[0K[1mnpm[22m [33mwarn[39m [94mdeprecated[39m jade@0.26.3: Jade has been renamed to pug, please install the latest version of pug instead of jade
+⠏[1G[0K[1mnpm[22m [33mwarn[39m [94mdeprecated[39m highlight.js@1.2.0: Version no longer supported. Upgrade to @latest
+⠏[1G[0K[1mnpm[22m [33mwarn[39m [94mdeprecated[39m connect@1.8.7: connect 1.x series is deprecated
+⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠏[1G[0K⠋[1G[0K⠙[1G[0K⠹[1G[0K⠸[1G[0K⠼[1G[0K⠴[1G[0K⠦[1G[0K⠧[1G[0K⠇[1G[0K⠙[1G[0K[1mnpm[22m [31merror[39m [94mcode[39m EACCES
+⠙[1G[0K[1mnpm[22m [31merror[39m [94msyscall[39m spawn sh
+⠙[1G[0K[1mnpm[22m [31merror[39m [94mpath[39m /home/toshihiro/playground/decafe-timer
+⠙[1G[0K[1mnpm[22m [31merror[39m [94merrno[39m [33m-13[39m
+⠙[1G[0K[1mnpm[22m [31merror[39m Error: spawn sh EACCES
+[1mnpm[22m [31merror[39m [90m    at ChildProcess._handle.onexit (node:internal/child_process:285:19)[39m
+[1mnpm[22m [31merror[39m [90m    at onErrorNT (node:internal/child_process:483:16)[39m
+[1mnpm[22m [31merror[39m [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+[1mnpm[22m [31merror[39m   errno: [33m-13[39m,
+[1mnpm[22m [31merror[39m   code: [32m'EACCES'[39m,
+[1mnpm[22m [31merror[39m   syscall: [32m'spawn sh'[39m,
+[1mnpm[22m [31merror[39m   path: [32m'/home/toshihiro/playground/decafe-timer'[39m,
+[1mnpm[22m [31merror[39m   spawnargs: [ [32m'-c'[39m, [32m'"codex"'[39m ],
+[1mnpm[22m [31merror[39m   cmd: [32m'sh'[39m,
+[1mnpm[22m [31merror[39m   args: [ [32m'-c'[39m, [32m'"codex"'[39m ],
+[1mnpm[22m [31merror[39m   stdout: [1mnull[22m,
+[1mnpm[22m [31merror[39m   stderr: [1mnull[22m,
+[1mnpm[22m [31merror[39m   event: [32m'npx'[39m,
+[1mnpm[22m [31merror[39m   script: [32m'"codex"'[39m,
+[1mnpm[22m [31merror[39m   pkgid: [90mundefined[39m
+[1mnpm[22m [31merror[39m }
+⠙[1G[0K[1mnpm[22m [31merror[39m
+[1mnpm[22m [31merror[39m The operation was rejected by your operating system.
+[1mnpm[22m [31merror[39m It is likely you do not have the permissions to access this file as the current user
+[1mnpm[22m [31merror[39m
+[1mnpm[22m [31merror[39m If you believe this might be a permissions issue, please double-check the
+[1mnpm[22m [31merror[39m permissions of the file and its containing directories, or try running
+[1mnpm[22m [31merror[39m the command again as root/Administrator.
+⠙[1G[0K[1mnpm[22m [96mnotice[39m
+[1mnpm[22m [96mnotice[39m New [36mpatch[39m version of npm available! [36m11.6.3[39m -> [34m11.6.4[39m
+[1mnpm[22m [96mnotice[39m Changelog: [34mhttps://github.com/npm/cli/releases/tag/v11.6.4[39m
+[1mnpm[22m [96mnotice[39m To update run: [4mnpm install -g npm@11.6.4[24m
+[1mnpm[22m [96mnotice[39m
+⠙[1G[0K[1mnpm[22m [31merror[39m A complete log of this run can be found in: /home/codex-toshihiro/.npm/_logs/2025-12-02T08_56_54_323Z-debug-0.log
+⠙[1G[0K
+Script done on 2025-12-02 17:57:11+09:00 [COMMAND_EXIT_CODE="243"]

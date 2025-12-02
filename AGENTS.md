@@ -23,3 +23,4 @@
 - Respect the cached state format if you extend features (other tools may rely on `finish_at` + `duration_sec`).
 - Rich configuration lives entirely in `run_timer_loop`; UI tweaks (colors, columns, new text) should stay within that block.
 - Before adding new dependencies, update both `pyproject.toml` and `README.md` and consider whether the CLI output must remain bilingual (the current strings mix English UI with Japanese comments).
+- Keep every configuration/state file under the project root (no `$HOME` or `/etc` dotfiles) so the repository stays self-contained for agents and CI runners.
