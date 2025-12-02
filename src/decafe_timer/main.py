@@ -18,7 +18,12 @@ APP_AUTHOR = "tos-kamiya"
 CACHE_DIR = Path(user_cache_dir(APP_NAME, APP_AUTHOR))
 STATE_FILE = CACHE_DIR / "timer_state.json"
 
-console = Console(color_system=None, markup=False, highlight=False)
+COLORED_CONSOLE = Console(markup=False, highlight=False)
+PLAIN_CONSOLE = Console(color_system=None, markup=False, highlight=False)
+
+
+def _get_console(*, one_line: bool = False, graph_only: bool = False) -> Console:
+    return PLAIN_CONSOLE if (one_line or graph_only) else COLORED_CONSOLE
 
 
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
@@ -112,6 +117,7 @@ def start_timer(
     one_line=False,
     graph_only=False,
 ):
+    console = _get_console(one_line=one_line, graph_only=graph_only)
     duration = timedelta(hours=hours, minutes=minutes, seconds=seconds)
     duration_sec = int(duration.total_seconds())
     if duration_sec <= 0:
@@ -141,6 +147,7 @@ def run_timer_loop(
     one_line: bool = False,
     graph_only: bool = False,
 ):
+    console = _get_console(one_line=one_line, graph_only=graph_only)
     # resume 用に state から読み直すケース
     if finish_at is None or duration_sec is None:
         state = load_state()
@@ -191,7 +198,7 @@ def _run_rich_loop(finish_at: datetime, duration_sec: int):
         TextColumn("{task.fields[remaining]}"),
         BarColumn(bar_width=60),
         transient=True,
-        console=console,
+        console=COLORED_CONSOLE,
     )
 
     with progress:
@@ -236,6 +243,7 @@ def _print_one_line_status(
     *,
     graph_only: bool = False,
 ):
+    console = _get_console(one_line=True, graph_only=graph_only)
     remaining_sec = int((finish_at - datetime.now()).total_seconds())
     if remaining_sec <= 0:
         try:
@@ -286,6 +294,7 @@ def _render_one_line(
 
 
 def resume_timer(*, one_line=False, graph_only=False):
+    console = _get_console(one_line=one_line, graph_only=graph_only)
     state = load_state()
     if state is None:
         if one_line or graph_only:
@@ -355,7 +364,10 @@ def main():
         try:
             h, m, s = parse_duration(args.duration)
         except ValueError:
-            console.print("Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS.")
+            _get_console(
+                one_line=args.one_line,
+                graph_only=args.graph_only,
+            ).print("Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS.")
             return
         start_timer(
             hours=h,
