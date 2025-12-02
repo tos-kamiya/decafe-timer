@@ -27,6 +27,13 @@ decafe-timer 2h
 
 Running the command without arguments resumes any active timer (expired timers are cleaned up automatically).
 
+If you want a simple snapshot for tools like `watch` or Conky, add `--one-line`. This prints the remaining time plus an ASCII bar once and exits, letting external tools rerun it as needed. To print only the bar (no time value), use `--graph-only` (which implies `--one-line`):
+
+```console
+decafe-timer --one-line
+decafe-timer --graph-only
+```
+
 ## License
 
 `decafe-timer` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.

@@ -18,10 +18,13 @@ APP_AUTHOR = "toshihiro"  # お好みで
 CACHE_DIR = Path(user_cache_dir(APP_NAME, APP_AUTHOR))
 STATE_FILE = CACHE_DIR / "timer_state.json"
 
-console = Console()
+console = Console(color_system=None, markup=False, highlight=False)
 
 
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
+ONE_LINE_BAR_WIDTH = 40
+BAR_FILLED_CHAR = "█"
+BAR_EMPTY_CHAR = "░"
 
 
 # ------------------------------
@@ -101,111 +104,197 @@ def parse_duration(duration_str: str):
     return hours, minutes, seconds
 
 
-def start_timer(hours=0, minutes=0, seconds=0):
+def start_timer(
+    hours=0,
+    minutes=0,
+    seconds=0,
+    *,
+    one_line=False,
+    graph_only=False,
+):
     duration = timedelta(hours=hours, minutes=minutes, seconds=seconds)
     duration_sec = int(duration.total_seconds())
     if duration_sec <= 0:
-        console.print("[red]Duration must be positive.[/red]")
+        console.print("Duration must be positive.")
         return
 
     finish_at = datetime.now() + timedelta(seconds=duration_sec)
     save_state(finish_at, duration_sec)
 
-    console.print(
-        f"[bold cyan]Coffee cooldown started.[/bold cyan] "
-        f"Expires at [yellow]{finish_at.strftime('%Y-%m-%d %H:%M:%S')}[/yellow]"
+    if not one_line and not graph_only:
+        console.print(
+            "Coffee cooldown started. "
+            f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+    run_timer_loop(
+        finish_at,
+        duration_sec,
+        one_line=one_line,
+        graph_only=graph_only,
     )
-    run_timer_loop(finish_at, duration_sec)
 
 
-def run_timer_loop(finish_at: datetime = None, duration_sec: int = None):
+def run_timer_loop(
+    finish_at: datetime = None,
+    duration_sec: int = None,
+    *,
+    one_line: bool = False,
+    graph_only: bool = False,
+):
     # resume 用に state から読み直すケース
     if finish_at is None or duration_sec is None:
         state = load_state()
         if state is None:
-            console.print("[yellow]No active timer.[/yellow]")
+            console.print("No active timer.")
             return
         finish_at, duration_sec = state
 
-    # すでに期限切れなら即終了
     now = datetime.now()
     if (finish_at - now) <= timedelta(0):
         try:
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        console.print("[bold green]Cooldown already expired![/bold green] ☕")
+        if one_line or graph_only:
+            console.print(
+                _render_one_line(0, duration_sec, graph_only=graph_only),
+                markup=False,
+            )
+        else:
+            console.print("Cooldown already expired! ☕")
         return
 
-    last_saved_minute = None
-
-    # rich の Progress を使ってバーを表示
-    progress = Progress(
-        TextColumn("[white]{task.fields[remaining]}[/white]"),
-        BarColumn(bar_width=60),
-        transient=True,  # 終了後にバーを消す
-        console=console,
-    )
+    if one_line or graph_only:
+        _print_one_line_status(
+            finish_at,
+            duration_sec,
+            graph_only=graph_only,
+        )
+        return
 
     try:
-        with progress:
-            task_id = progress.add_task(
-                "",
-                total=duration_sec,
-                remaining="--:--:--",
-            )
+        _run_rich_loop(finish_at, duration_sec)
 
-            while True:
-                now = datetime.now()
-                remaining = finish_at - now
-                remaining_sec = int(remaining.total_seconds())
-
-                if remaining_sec <= 0:
-                    # 残り 0 なので completed=0 として「バーが完全に消えた状態」に
-                    progress.update(
-                        task_id,
-                        completed=0,
-                        remaining="00:00:00",
-                    )
-                    break
-
-                # 経過時間 = 全体 - 残り
-                completed = remaining_sec
-
-                # 残り時間を HH:MM:SS に整形
-                h = remaining_sec // 3600
-                m = (remaining_sec % 3600) // 60
-                s = remaining_sec % 60
-                remaining_str = f"{h:02d}:{m:02d}:{s:02d}"
-
-                progress.update(
-                    task_id,
-                    completed=completed,
-                    remaining=remaining_str,
-                )
-
-                # 1分ごとに状態保存
-                if last_saved_minute != now.minute:
-                    save_state(finish_at, duration_sec)
-                    last_saved_minute = now.minute
-
-                time.sleep(1)
-
-        # Progress コンテキストを抜けたあとにメッセージ表示
         try:
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        console.print("[bold green]Cooldown expired![/bold green] ☕ You may drink coffee now.")
+        console.print("Cooldown expired! ☕ You may drink coffee now.")
 
     except KeyboardInterrupt:
-        console.print("\n[yellow]Interrupted by user. Timer state saved.[/yellow]")
+        console.print("\nInterrupted by user. Timer state saved.")
 
 
-def resume_timer():
+def _run_rich_loop(finish_at: datetime, duration_sec: int):
+    last_saved_minute = None
+    progress = Progress(
+        TextColumn("{task.fields[remaining]}"),
+        BarColumn(bar_width=60),
+        transient=True,
+        console=console,
+    )
+
+    with progress:
+        task_id = progress.add_task(
+            "",
+            total=duration_sec,
+            remaining="--:--:--",
+        )
+
+        while True:
+            now = datetime.now()
+            remaining = finish_at - now
+            remaining_sec = int(remaining.total_seconds())
+
+            if remaining_sec <= 0:
+                progress.update(
+                    task_id,
+                    completed=0,
+                    remaining="00:00:00",
+                )
+                break
+
+            completed = remaining_sec
+            remaining_str = _format_remaining(remaining_sec)
+
+            progress.update(
+                task_id,
+                completed=completed,
+                remaining=remaining_str,
+            )
+
+            if last_saved_minute != now.minute:
+                save_state(finish_at, duration_sec)
+                last_saved_minute = now.minute
+
+            time.sleep(1)
+
+
+def _print_one_line_status(
+    finish_at: datetime,
+    duration_sec: int,
+    *,
+    graph_only: bool = False,
+):
+    remaining_sec = int((finish_at - datetime.now()).total_seconds())
+    if remaining_sec <= 0:
+        try:
+            STATE_FILE.unlink(missing_ok=True)
+        except Exception:
+            pass
+        line = _render_one_line(0, duration_sec, graph_only=graph_only)
+        console.print(line, markup=False)
+        return
+
+    line = _render_one_line(
+        remaining_sec,
+        duration_sec,
+        graph_only=graph_only,
+    )
+    console.print(line, markup=False)
+
+
+def _format_remaining(remaining_sec: int) -> str:
+    h = remaining_sec // 3600
+    m = (remaining_sec % 3600) // 60
+    s = remaining_sec % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _render_one_line(
+    remaining_sec: int,
+    duration_sec: int,
+    *,
+    graph_only: bool = False,
+) -> str:
+    remaining_str = _format_remaining(max(remaining_sec, 0))
+    if duration_sec <= 0:
+        bar = BAR_EMPTY_CHAR * ONE_LINE_BAR_WIDTH
+    else:
+        ratio = max(0, min(remaining_sec / duration_sec, 1))
+        filled = min(
+            ONE_LINE_BAR_WIDTH,
+            int(round(ratio * ONE_LINE_BAR_WIDTH)),
+        )
+        bar = (
+            BAR_FILLED_CHAR * filled
+            + BAR_EMPTY_CHAR * (ONE_LINE_BAR_WIDTH - filled)
+        )
+    if graph_only:
+        return f"[{bar}]"
+    return f"{remaining_str} [{bar}]"
+
+
+def resume_timer(*, one_line=False, graph_only=False):
     state = load_state()
     if state is None:
-        console.print("[yellow]No active timer.[/yellow]")
+        if one_line or graph_only:
+            console.print(
+                _render_one_line(0, 0, graph_only=graph_only),
+                markup=False,
+            )
+        else:
+            console.print("No active timer.")
         return
 
     finish_at, duration_sec = state
@@ -214,13 +303,25 @@ def resume_timer():
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        console.print("[bold green]Cooldown already expired![/bold green] ☕")
+        if one_line or graph_only:
+            console.print(
+                _render_one_line(0, duration_sec, graph_only=graph_only),
+                markup=False,
+            )
+        else:
+            console.print("Cooldown already expired! ☕")
         return
-    console.print(
-        f"[bold cyan]Resuming cooldown.[/bold cyan] "
-        f"Expires at [yellow]{finish_at.strftime('%Y-%m-%d %H:%M:%S')}[/yellow]"
+    if not one_line and not graph_only:
+        console.print(
+            "Resuming cooldown. "
+            f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+    run_timer_loop(
+        finish_at,
+        duration_sec,
+        one_line=one_line,
+        graph_only=graph_only,
     )
-    run_timer_loop(finish_at, duration_sec)
 
 
 # ------------------------------
@@ -236,18 +337,36 @@ def main():
         metavar="DURATION",
         help="Start a new timer (e.g. 2h, 15m30s, or 0:25:00)",
     )
+    parser.add_argument(
+        "--one-line",
+        action="store_true",
+        help="Print a single ASCII snapshot (time + bar) and exit.",
+    )
+    parser.add_argument(
+        "--graph-only",
+        action="store_true",
+        help="Print only the ASCII bar (no time). Implies --one-line.",
+    )
     args = parser.parse_args()
+    if args.graph_only:
+        args.one_line = True
 
     if args.duration:
         try:
             h, m, s = parse_duration(args.duration)
         except ValueError:
-            console.print("[red]Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS.[/red]")
+            console.print("Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS.")
             return
-        start_timer(hours=h, minutes=m, seconds=s)
+        start_timer(
+            hours=h,
+            minutes=m,
+            seconds=s,
+            one_line=args.one_line,
+            graph_only=args.graph_only,
+        )
     else:
         # 引数なしなら再開
-        resume_timer()
+        resume_timer(one_line=args.one_line, graph_only=args.graph_only)
 
 
 if __name__ == "__main__":
