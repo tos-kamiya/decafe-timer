@@ -13,7 +13,7 @@ from rich.progress import (
 )
 
 APP_NAME = "coffee_timer"
-APP_AUTHOR = "toshihiro"  # お好みで
+APP_AUTHOR = "tos-kamiya"
 
 CACHE_DIR = Path(user_cache_dir(APP_NAME, APP_AUTHOR))
 STATE_FILE = CACHE_DIR / "timer_state.json"
