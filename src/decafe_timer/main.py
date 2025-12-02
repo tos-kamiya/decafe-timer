@@ -22,7 +22,7 @@ console = Console(color_system=None, markup=False, highlight=False)
 
 
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
-ONE_LINE_BAR_WIDTH = 40
+ONE_LINE_BAR_WIDTH = 20
 BAR_FILLED_CHAR = "█"
 BAR_EMPTY_CHAR = "░"
 
