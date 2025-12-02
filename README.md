@@ -34,6 +34,8 @@ decafe-timer --one-line
 decafe-timer --graph-only
 ```
 
+Both snapshot modes display `[You may drink coffee now.]` once the cooldown finishes so the output width stays consistent with the ASCII bar.
+
 ## License
 
 `decafe-timer` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
