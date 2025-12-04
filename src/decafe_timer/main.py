@@ -36,6 +36,7 @@ ONE_LINE_BAR_WIDTH = len(ASCII_EXPIRED_MESSAGE)
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
 BAR_FILLED_CHAR = "█"
 BAR_EMPTY_CHAR = "░"
+PARTIAL_BAR_CHARS = ("", "▏", "▎", "▍", "▌", "▋", "▊", "▉")
 
 
 # ------------------------------
@@ -282,14 +283,20 @@ def _render_one_line(
         bar = BAR_EMPTY_CHAR * ONE_LINE_BAR_WIDTH
     else:
         ratio = max(0, min(remaining_sec / duration_sec, 1))
-        filled = min(
-            ONE_LINE_BAR_WIDTH,
-            int(round(ratio * ONE_LINE_BAR_WIDTH)),
+        filled_exact = ratio * ONE_LINE_BAR_WIDTH
+        full_blocks = min(int(filled_exact), ONE_LINE_BAR_WIDTH)
+        remainder = filled_exact - full_blocks
+        partial_index = min(
+            int(remainder * len(PARTIAL_BAR_CHARS)),
+            len(PARTIAL_BAR_CHARS) - 1,
         )
-        bar = (
-            BAR_FILLED_CHAR * filled
-            + BAR_EMPTY_CHAR * (ONE_LINE_BAR_WIDTH - filled)
-        )
+        partial_char = PARTIAL_BAR_CHARS[partial_index]
+        bar = BAR_FILLED_CHAR * full_blocks
+        if partial_char and full_blocks < ONE_LINE_BAR_WIDTH:
+            bar += partial_char
+        empty_count = ONE_LINE_BAR_WIDTH - len(bar)
+        if empty_count > 0:
+            bar += BAR_EMPTY_CHAR * empty_count
     if graph_only:
         return f"[{bar}]"
     return f"{remaining_str} [{bar}]"
