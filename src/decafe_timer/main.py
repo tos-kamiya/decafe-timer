@@ -429,7 +429,31 @@ def resume_timer(*, one_line=False, graph_only=False):
 # ------------------------------
 # エントリポイント
 # ------------------------------
-def main():
+def main(argv=None):
+    args = _parse_args(argv)
+    resolved = _resolve_timer_state(args)
+    if resolved is None:
+        return
+    finish_at, duration_sec, new_timer_started = resolved
+
+    if args.run:
+        _run_live_mode(
+            args,
+            finish_at,
+            duration_sec,
+            new_timer_started,
+        )
+        return
+
+    _print_snapshot_status(
+        finish_at,
+        duration_sec,
+        one_line=args.one_line,
+        graph_only=args.graph_only,
+    )
+
+
+def _parse_args(argv=None):
     import argparse
 
     parser = argparse.ArgumentParser(description="Coffee cooldown timer (rich version)")
@@ -454,36 +478,32 @@ def main():
         action="store_true",
         help="Keep updating continuously until the timer expires.",
     )
-    args = parser.parse_args()
+    return parser.parse_args(argv)
 
+
+def _resolve_timer_state(args):
+    console = _get_console(one_line=args.one_line, graph_only=args.graph_only)
     finish_at = None
     duration_sec = None
     new_timer_started = False
-
-    def _error_console():
-        return _get_console(one_line=args.one_line, graph_only=args.graph_only)
 
     if args.duration:
         try:
             h, m, s = parse_duration(args.duration)
         except ValueError:
-            _error_console().print(
+            console.print(
                 "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS."
             )
-            return
+            return None
         try:
             finish_at, duration_sec = _schedule_timer(h, m, s)
         except ValueError as exc:
-            _error_console().print(str(exc))
-            return
+            console.print(str(exc))
+            return None
         new_timer_started = True
     else:
         state = load_state()
         if state is None:
-            console = _get_console(
-                one_line=args.one_line,
-                graph_only=args.graph_only,
-            )
             if args.run:
                 console.print("No active timer.")
             else:
@@ -491,34 +511,29 @@ def main():
                     _print_ascii_expired(console)
                 else:
                     console.print("No active timer.")
-            return
+            return None
         finish_at, duration_sec = state
 
-    if args.run:
-        console = _get_console(
-            one_line=args.one_line,
-            graph_only=args.graph_only,
-        )
-        if finish_at > datetime.now():
-            if new_timer_started:
-                console.print(
-                    "Coffee cooldown started. "
-                    f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
-                )
-            else:
-                console.print(
-                    "Resuming cooldown. "
-                    f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
-                )
-        run_timer_loop(
-            finish_at,
-            duration_sec,
-            one_line=args.one_line,
-            graph_only=args.graph_only,
-        )
-        return
+    return finish_at, duration_sec, new_timer_started
 
-    _print_snapshot_status(
+
+def _run_live_mode(args, finish_at, duration_sec, new_timer_started):
+    console = _get_console(
+        one_line=args.one_line,
+        graph_only=args.graph_only,
+    )
+    if finish_at > datetime.now():
+        if new_timer_started:
+            console.print(
+                "Coffee cooldown started. "
+                f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        else:
+            console.print(
+                "Resuming cooldown. "
+                f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+    run_timer_loop(
         finish_at,
         duration_sec,
         one_line=args.one_line,
