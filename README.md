@@ -19,22 +19,23 @@ pip install decafe-timer
 
 ## Usage
 
-Start a new cooldown by passing the duration as a positional argument. Durations accept either `HH:MM:SS` or a shorthand like `2h30m`, `15m`, or `45s`.
+Running `decafe-timer` with no options now prints a **single snapshot** of the current cooldown status—remaining time plus the ASCII bar—and exits immediately. This makes it perfect for status bars or `watch` loops:
 
 ```console
-decafe-timer 2h
+decafe-timer
+decafe-timer --graph-only  # bar only
 ```
 
-Running the command without arguments resumes any active timer (expired timers are cleaned up automatically).
+(Both snapshot modes display `[You may drink coffee now.]` once the cooldown finishes so the output width stays consistent.)
 
-If you want a simple snapshot for tools like `watch` or Conky, add `--one-line`. This prints the remaining time plus an ASCII bar once and exits, letting external tools rerun it as needed. To print only the bar (no time value), use `--graph-only` (which implies `--one-line`):
+To start/resume the interactive Rich UI that keeps updating until the cooldown expires, pass `--run` in front of any duration or state-display options. Durations accept either `HH:MM:SS` or a shorthand like `2h30m`, `15m`, or `45s`.
 
 ```console
-decafe-timer --one-line
-decafe-timer --graph-only
+decafe-timer --run 2h
+decafe-timer --run        # resume an active timer
 ```
 
-Both snapshot modes display `[You may drink coffee now.]` once the cooldown finishes so the output width stays consistent with the ASCII bar.
+`--one-line` / `--graph-only` are for the snapshot mode only; omit them when running with `--run` so the progress bar can render until completion.
 
 ## License
 

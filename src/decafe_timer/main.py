@@ -352,9 +352,29 @@ def main():
         action="store_true",
         help="Print only the ASCII bar (no time). Implies --one-line.",
     )
+    parser.add_argument(
+        "--run",
+        action="store_true",
+        help="Start or resume the timer and keep updating until it expires.",
+    )
     args = parser.parse_args()
     if args.graph_only:
         args.one_line = True
+
+    if not args.run:
+        if args.duration:
+            _get_console(one_line=True, graph_only=args.graph_only).print(
+                "Use --run to start a timer with a duration."
+            )
+            return
+        resume_timer(one_line=True, graph_only=args.graph_only)
+        return
+
+    if args.one_line or args.graph_only:
+        _get_console(one_line=True, graph_only=args.graph_only).print(
+            "--one-line/--graph-only are only available without --run."
+        )
+        return
 
     if args.duration:
         try:
