@@ -19,23 +19,20 @@ pip install decafe-timer
 
 ## Usage
 
-Running `decafe-timer` with no options now prints a **single snapshot** of the current cooldown status—remaining time plus the ASCII bar—and exits immediately. This makes it perfect for status bars or `watch` loops:
+The CLI revolves around three ideas:
+
+1. Passing a duration (e.g. `2h`, `15m30s`, or `0:45:00`) creates a new cooldown; omitting it resumes whatever is already running.
+2. `--run` decides whether to keep the Rich UI updating until the cooldown expires. Without `--run`, the command prints the current status once and exits.
+3. Style flags pick the ASCII layout: default multi-line (`Remaining` / `Expires at` + bar), `--one-line` (`HH:MM:SS [████░░…]`), or `--graph-only` (bar only). They’re accepted on any invocation; when paired with `--run`, the live updates switch to that ASCII style instead of the Rich progress bar. Snapshots print `[You may drink coffee now.]` once the timer finishes.
 
 ```console
-decafe-timer
-decafe-timer --graph-only  # bar only
+decafe-timer 45m          # start a new timer, print one snapshot
+decafe-timer              # resume the latest timer, one snapshot
+decafe-timer --run 45m    # start a new timer and watch it count down
+decafe-timer --run        # resume the Rich UI for an active timer
+decafe-timer --run --one-line 10m  # live ASCII updates instead of Rich
+decafe-timer --graph-only # snapshot with the ASCII bar only
 ```
-
-(Both snapshot modes display `[You may drink coffee now.]` once the cooldown finishes so the output width stays consistent.)
-
-To start/resume the interactive Rich UI that keeps updating until the cooldown expires, pass `--run` in front of any duration or state-display options. Durations accept either `HH:MM:SS` or a shorthand like `2h30m`, `15m`, or `45s`.
-
-```console
-decafe-timer --run 2h
-decafe-timer --run        # resume an active timer
-```
-
-`--one-line` / `--graph-only` are for the snapshot mode only; omit them when running with `--run` so the progress bar can render until completion.
 
 ## License
 

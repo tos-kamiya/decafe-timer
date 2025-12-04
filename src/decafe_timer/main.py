@@ -39,6 +39,17 @@ BAR_EMPTY_CHAR = "░"
 PARTIAL_BAR_CHARS = ("", "▏", "▎", "▍", "▌", "▋", "▊", "▉")
 
 
+def _schedule_timer(hours: int, minutes: int, seconds: int):
+    """Create a new timer, persist it, and return (finish_at, duration_sec)."""
+    duration = timedelta(hours=hours, minutes=minutes, seconds=seconds)
+    duration_sec = int(duration.total_seconds())
+    if duration_sec <= 0:
+        raise ValueError("Duration must be positive.")
+    finish_at = datetime.now() + duration
+    save_state(finish_at, duration_sec)
+    return finish_at, duration_sec
+
+
 # ------------------------------
 # 永続化まわり
 # ------------------------------
@@ -125,14 +136,11 @@ def start_timer(
     graph_only=False,
 ):
     console = _get_console(one_line=one_line, graph_only=graph_only)
-    duration = timedelta(hours=hours, minutes=minutes, seconds=seconds)
-    duration_sec = int(duration.total_seconds())
-    if duration_sec <= 0:
-        console.print("Duration must be positive.")
+    try:
+        finish_at, duration_sec = _schedule_timer(hours, minutes, seconds)
+    except ValueError as exc:
+        console.print(str(exc))
         return
-
-    finish_at = datetime.now() + timedelta(seconds=duration_sec)
-    save_state(finish_at, duration_sec)
 
     if not one_line and not graph_only:
         console.print(
@@ -176,7 +184,7 @@ def run_timer_loop(
         return
 
     if one_line or graph_only:
-        _print_one_line_status(
+        _run_ascii_loop(
             finish_at,
             duration_sec,
             graph_only=graph_only,
@@ -241,28 +249,110 @@ def _run_rich_loop(finish_at: datetime, duration_sec: int):
             time.sleep(1)
 
 
-def _print_one_line_status(
+def _run_ascii_loop(
     finish_at: datetime,
     duration_sec: int,
     *,
     graph_only: bool = False,
 ):
     console = _get_console(one_line=True, graph_only=graph_only)
+    last_saved_minute = None
+    last_line_len = 0
+
+    try:
+        while True:
+            now = datetime.now()
+            remaining = finish_at - now
+            remaining_sec = int(remaining.total_seconds())
+
+            if remaining_sec <= 0:
+                break
+
+            line = _render_one_line(
+                remaining_sec,
+                duration_sec,
+                graph_only=graph_only,
+            )
+            pad = max(last_line_len - len(line), 0)
+            output = line + (" " * pad)
+            console.print(
+                output,
+                end="\r",
+                markup=False,
+                highlight=False,
+            )
+            last_line_len = len(line)
+
+            if last_saved_minute != now.minute:
+                save_state(finish_at, duration_sec)
+                last_saved_minute = now.minute
+
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        console.print("\nInterrupted by user. Timer state saved.")
+        return
+
+    # Clear the current line before printing the final message.
+    if last_line_len:
+        console.print(" " * last_line_len, end="\r")
+
+    try:
+        STATE_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    _print_ascii_expired(console)
+
+
+def _print_snapshot_status(
+    finish_at: datetime,
+    duration_sec: int,
+    *,
+    one_line: bool = False,
+    graph_only: bool = False,
+):
+    console = _get_console(one_line=one_line, graph_only=graph_only)
     remaining_sec = int((finish_at - datetime.now()).total_seconds())
     if remaining_sec <= 0:
         try:
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        _print_ascii_expired(console)
+        if one_line or graph_only:
+            _print_ascii_expired(console)
+        else:
+            console.print("Cooldown expired! ☕ You may drink coffee now.")
         return
 
-    line = _render_one_line(
+    if graph_only:
+        line = _render_one_line(
+            remaining_sec,
+            duration_sec,
+            graph_only=True,
+        )
+        console.print(line, markup=False)
+        return
+
+    if one_line:
+        line = _render_one_line(
+            remaining_sec,
+            duration_sec,
+            graph_only=False,
+        )
+        console.print(line, markup=False)
+        return
+
+    expires_at = finish_at.strftime("%Y-%m-%d %H:%M:%S")
+    remaining_str = _format_remaining(remaining_sec)
+    bar_line = _render_one_line(
         remaining_sec,
         duration_sec,
-        graph_only=graph_only,
+        graph_only=True,
     )
-    console.print(line, markup=False)
+    console.print(f"Remaining: {remaining_str}")
+    console.print(f"Expires at: {expires_at}")
+    console.print(bar_line, markup=False)
 
 
 def _format_remaining(remaining_sec: int) -> str:
@@ -347,61 +437,93 @@ def main():
         "duration",
         nargs="?",
         metavar="DURATION",
-        help="Start a new timer (e.g. 2h, 15m30s, or 0:25:00)",
+        help="Set a new timer (e.g. 2h, 15m30s, or 0:25:00). Omit to resume.",
     )
     parser.add_argument(
         "--one-line",
         action="store_true",
-        help="Print a single ASCII snapshot (time + bar) and exit.",
+        help="Use the single-line ASCII format (time + bar).",
     )
     parser.add_argument(
         "--graph-only",
         action="store_true",
-        help="Print only the ASCII bar (no time). Implies --one-line.",
+        help="Show only the ASCII bar (no time).",
     )
     parser.add_argument(
         "--run",
         action="store_true",
-        help="Start or resume the timer and keep updating until it expires.",
+        help="Keep updating continuously until the timer expires.",
     )
     args = parser.parse_args()
-    if args.graph_only:
-        args.one_line = True
 
-    if not args.run:
-        if args.duration:
-            _get_console(one_line=True, graph_only=args.graph_only).print(
-                "Use --run to start a timer with a duration."
-            )
-            return
-        resume_timer(one_line=True, graph_only=args.graph_only)
-        return
+    finish_at = None
+    duration_sec = None
+    new_timer_started = False
 
-    if args.one_line or args.graph_only:
-        _get_console(one_line=True, graph_only=args.graph_only).print(
-            "--one-line/--graph-only are only available without --run."
-        )
-        return
+    def _error_console():
+        return _get_console(one_line=args.one_line, graph_only=args.graph_only)
 
     if args.duration:
         try:
             h, m, s = parse_duration(args.duration)
         except ValueError:
-            _get_console(
+            _error_console().print(
+                "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS."
+            )
+            return
+        try:
+            finish_at, duration_sec = _schedule_timer(h, m, s)
+        except ValueError as exc:
+            _error_console().print(str(exc))
+            return
+        new_timer_started = True
+    else:
+        state = load_state()
+        if state is None:
+            console = _get_console(
                 one_line=args.one_line,
                 graph_only=args.graph_only,
-            ).print("Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS.")
+            )
+            if args.run:
+                console.print("No active timer.")
+            else:
+                if args.one_line or args.graph_only:
+                    _print_ascii_expired(console)
+                else:
+                    console.print("No active timer.")
             return
-        start_timer(
-            hours=h,
-            minutes=m,
-            seconds=s,
+        finish_at, duration_sec = state
+
+    if args.run:
+        console = _get_console(
             one_line=args.one_line,
             graph_only=args.graph_only,
         )
-    else:
-        # 引数なしなら再開
-        resume_timer(one_line=args.one_line, graph_only=args.graph_only)
+        if finish_at > datetime.now():
+            if new_timer_started:
+                console.print(
+                    "Coffee cooldown started. "
+                    f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+            else:
+                console.print(
+                    "Resuming cooldown. "
+                    f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+        run_timer_loop(
+            finish_at,
+            duration_sec,
+            one_line=args.one_line,
+            graph_only=args.graph_only,
+        )
+        return
+
+    _print_snapshot_status(
+        finish_at,
+        duration_sec,
+        one_line=args.one_line,
+        graph_only=args.graph_only,
+    )
 
 
 if __name__ == "__main__":
