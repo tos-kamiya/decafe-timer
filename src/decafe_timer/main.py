@@ -11,6 +11,7 @@ from rich.progress import (
     BarColumn,
     TextColumn,
 )
+from .__about__ import __version__
 
 APP_NAME = "coffee_timer"
 APP_AUTHOR = "tos-kamiya"
@@ -34,20 +35,30 @@ def _print_ascii_expired(console: Console):
 
 ONE_LINE_BAR_WIDTH = len(ASCII_EXPIRED_MESSAGE)
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
+FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
 BAR_FILLED_CHAR = "█"
 BAR_EMPTY_CHAR = "░"
 PARTIAL_BAR_CHARS = ("", "▏", "▎", "▍", "▌", "▋", "▊", "▉")
 
+INVALID_DURATION_MESSAGE = (
+    "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS. "
+    "You can also use remaining/total like 3h/5h."
+)
+
+
+def _schedule_timer_seconds(remaining_sec: int, total_sec: int):
+    """Create a new timer from seconds, persist it, and return (finish_at, duration_sec)."""
+    if remaining_sec <= 0 or total_sec <= 0:
+        raise ValueError("Duration must be positive.")
+    finish_at = datetime.now() + timedelta(seconds=remaining_sec)
+    save_state(finish_at, total_sec)
+    return finish_at, total_sec
+
 
 def _schedule_timer(hours: int, minutes: int, seconds: int):
     """Create a new timer, persist it, and return (finish_at, duration_sec)."""
-    duration = timedelta(hours=hours, minutes=minutes, seconds=seconds)
-    duration_sec = int(duration.total_seconds())
-    if duration_sec <= 0:
-        raise ValueError("Duration must be positive.")
-    finish_at = datetime.now() + duration
-    save_state(finish_at, duration_sec)
-    return finish_at, duration_sec
+    duration_sec = _duration_to_seconds(hours, minutes, seconds)
+    return _schedule_timer_seconds(duration_sec, duration_sec)
 
 
 # ------------------------------
@@ -81,11 +92,11 @@ def load_state():
 # ------------------------------
 # タイマー本体
 # ------------------------------
-def parse_duration(duration_str: str):
-    """Parse duration from HH:MM:SS or AhBmCs style."""
+def _parse_single_duration(duration_str: str):
+    """Parse duration from HH:MM:SS or AhBmCs style into (h, m, s)."""
     duration_str = duration_str.strip()
     if not duration_str:
-        raise ValueError("Duration string is empty.")
+        raise ValueError
 
     if ":" in duration_str:
         parts = duration_str.split(":")
@@ -96,6 +107,8 @@ def parse_duration(duration_str: str):
         except ValueError as exc:
             raise ValueError from exc
         if any(value < 0 for value in (h, m, s)):
+            raise ValueError
+        if h == m == s == 0:
             raise ValueError
         return h, m, s
 
@@ -127,6 +140,51 @@ def parse_duration(duration_str: str):
     return hours, minutes, seconds
 
 
+def _duration_to_seconds(hours: int, minutes: int, seconds: int) -> int:
+    return int(timedelta(hours=hours, minutes=minutes, seconds=seconds).total_seconds())
+
+
+def parse_duration(duration_str: str):
+    """Parse duration; support remaining/total with a slash or a single duration.
+
+    Returns (remaining_seconds, total_seconds).
+    """
+    duration_str = duration_str.strip()
+    if not duration_str:
+        raise ValueError(INVALID_DURATION_MESSAGE)
+
+    fraction_parts = FRACTION_SPLIT_PATTERN.split(duration_str, maxsplit=1)
+    if len(fraction_parts) == 2:
+        remaining_raw, total_raw = fraction_parts
+        try:
+            rh, rm, rs = _parse_single_duration(remaining_raw)
+            th, tm, ts = _parse_single_duration(total_raw)
+        except ValueError:
+            raise ValueError(INVALID_DURATION_MESSAGE)
+
+        remaining_sec = _duration_to_seconds(rh, rm, rs)
+        total_sec = _duration_to_seconds(th, tm, ts)
+
+        if remaining_sec <= 0 or total_sec <= 0:
+            raise ValueError(
+                "Duration must be positive (parsed as remaining/total like 3h/5h)."
+            )
+        if remaining_sec > total_sec:
+            raise ValueError(
+                "Remaining duration cannot exceed total duration "
+                "(parsed as remaining/total like 3h/5h)."
+            )
+
+        return remaining_sec, total_sec
+
+    try:
+        h, m, s = _parse_single_duration(duration_str)
+    except ValueError:
+        raise ValueError(INVALID_DURATION_MESSAGE)
+    single_sec = _duration_to_seconds(h, m, s)
+    return single_sec, single_sec
+
+
 def start_timer(
     hours=0,
     minutes=0,
@@ -137,7 +195,8 @@ def start_timer(
 ):
     console = _get_console(one_line=one_line, graph_only=graph_only)
     try:
-        finish_at, duration_sec = _schedule_timer(hours, minutes, seconds)
+        duration_sec = _duration_to_seconds(hours, minutes, seconds)
+        finish_at, duration_sec = _schedule_timer_seconds(duration_sec, duration_sec)
     except ValueError as exc:
         console.print(str(exc))
         return
@@ -461,7 +520,15 @@ def _parse_args(argv=None):
         "duration",
         nargs="?",
         metavar="DURATION",
-        help="Set a new timer (e.g. 2h, 15m30s, or 0:25:00). Omit to resume.",
+        help=(
+            "Set a new timer (e.g. 2h, 15m30s, 0:25:00, or remaining/total like 3h/5h). "
+            "Omit to resume."
+        ),
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "--one-line",
@@ -489,14 +556,13 @@ def _resolve_timer_state(args):
 
     if args.duration:
         try:
-            h, m, s = parse_duration(args.duration)
-        except ValueError:
-            console.print(
-                "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS."
-            )
+            remaining_sec, total_sec = parse_duration(args.duration)
+        except ValueError as exc:
+            message = str(exc) if str(exc) else INVALID_DURATION_MESSAGE
+            console.print(message)
             return None
         try:
-            finish_at, duration_sec = _schedule_timer(h, m, s)
+            finish_at, duration_sec = _schedule_timer_seconds(remaining_sec, total_sec)
         except ValueError as exc:
             console.print(str(exc))
             return None
