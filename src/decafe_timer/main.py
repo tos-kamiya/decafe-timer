@@ -47,7 +47,7 @@ def _get_console(*, one_line: bool = False, graph_only: bool = False) -> Console
     return PLAIN_CONSOLE if (one_line or graph_only) else COLORED_CONSOLE
 
 
-ONE_LINE_BAR_WIDTH = max(len(m) for m in EXPIRED_MESSAGES)
+ONE_LINE_BAR_WIDTH = int(max(len(m) for m in EXPIRED_MESSAGES) * 0.6 + 1)
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
 FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
 BAR_FILLED_CHAR = "█"
