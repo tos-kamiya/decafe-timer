@@ -1,4 +1,5 @@
 import json
+import random
 import re
 import time
 from datetime import datetime, timedelta
@@ -7,10 +8,11 @@ from pathlib import Path
 from appdirs import user_cache_dir
 from rich.console import Console
 from rich.progress import (
-    Progress,
     BarColumn,
+    Progress,
     TextColumn,
 )
+
 from .__about__ import __version__
 
 APP_NAME = "coffee_timer"
@@ -22,18 +24,33 @@ STATE_FILE = CACHE_DIR / "timer_state.json"
 COLORED_CONSOLE = Console(markup=False, highlight=False)
 PLAIN_CONSOLE = Console(color_system=None, markup=False, highlight=False)
 
-ASCII_EXPIRED_MESSAGE = "You may drink coffee now."
+EXPIRED_MESSAGES = [
+    "Cooldown expired! ☕ You may drink coffee now.",
+    # やさしく励ましてくれる系
+    "Your break is over — enjoy your coffee, gently.",
+    "You’ve waited well. Treat yourself to a warm cup.",
+    "Thanks for taking care of yourself. A little coffee is okay now.",
+    # ふんわり癒し系
+    "Your coffee time has arrived — relax and enjoy.",
+    "A warm cup is waiting for you.",
+    "The timer’s done. Brew a moment of comfort.",
+    # ちょっとユーモア系
+    "Permission granted: caffeination may proceed.",
+    "Coffee mode unlocked. Use wisely.",
+    "Your patience has been rewarded. Proceed to the beans.",
+    # 行動変容をそっと支援する系
+    "If you choose to, a small cup won’t hurt now.",
+    "You took a mindful pause — good job. Coffee is okay now.",
+    "Ready when you are. Keep listening to your body.",
+]
+NO_ACTIVE_TIMER_MESSAGE = "No active timer."
 
 
 def _get_console(*, one_line: bool = False, graph_only: bool = False) -> Console:
     return PLAIN_CONSOLE if (one_line or graph_only) else COLORED_CONSOLE
 
 
-def _print_ascii_expired(console: Console):
-    console.print(f"[{ASCII_EXPIRED_MESSAGE}]")
-
-
-ONE_LINE_BAR_WIDTH = len(ASCII_EXPIRED_MESSAGE)
+ONE_LINE_BAR_WIDTH = max(len(m) for m in EXPIRED_MESSAGES)
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
 FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
 BAR_FILLED_CHAR = "█"
@@ -226,7 +243,7 @@ def run_timer_loop(
     if finish_at is None or duration_sec is None:
         state = load_state()
         if state is None:
-            console.print("No active timer.")
+            console.print(NO_ACTIVE_TIMER_MESSAGE)
             return
         finish_at, duration_sec = state
 
@@ -236,10 +253,7 @@ def run_timer_loop(
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        if one_line or graph_only:
-            _print_ascii_expired(console)
-        else:
-            console.print("Cooldown already expired! ☕")
+        console.print(random.choice(EXPIRED_MESSAGES))
         return
 
     if one_line or graph_only:
@@ -257,7 +271,7 @@ def run_timer_loop(
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        console.print("Cooldown expired! ☕ You may drink coffee now.")
+        console.print(random.choice(EXPIRED_MESSAGES))
 
     except KeyboardInterrupt:
         console.print("\nInterrupted by user. Timer state saved.")
@@ -361,7 +375,7 @@ def _run_ascii_loop(
     except Exception:
         pass
 
-    _print_ascii_expired(console)
+    console.print(random.choice(EXPIRED_MESSAGES))
 
 
 def _print_snapshot_status(
@@ -378,10 +392,7 @@ def _print_snapshot_status(
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        if one_line or graph_only:
-            _print_ascii_expired(console)
-        else:
-            console.print("Cooldown expired! ☕ You may drink coffee now.")
+        console.print(random.choice(EXPIRED_MESSAGES))
         return
 
     if graph_only:
@@ -456,9 +467,9 @@ def resume_timer(*, one_line=False, graph_only=False):
     state = load_state()
     if state is None:
         if one_line or graph_only:
-            _print_ascii_expired(console)
+            console.print(random.choice(EXPIRED_MESSAGES))
         else:
-            console.print("No active timer.")
+            console.print(NO_ACTIVE_TIMER_MESSAGE)
         return
 
     finish_at, duration_sec = state
@@ -467,15 +478,11 @@ def resume_timer(*, one_line=False, graph_only=False):
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        if one_line or graph_only:
-            _print_ascii_expired(console)
-        else:
-            console.print("Cooldown already expired! ☕")
+        console.print(random.choice(EXPIRED_MESSAGES))
         return
     if not one_line and not graph_only:
         console.print(
-            "Resuming cooldown. "
-            f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            f"Resuming cooldown. Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )
     run_timer_loop(
         finish_at,
@@ -571,12 +578,12 @@ def _resolve_timer_state(args):
         state = load_state()
         if state is None:
             if args.run:
-                console.print("No active timer.")
+                console.print(NO_ACTIVE_TIMER_MESSAGE)
             else:
                 if args.one_line or args.graph_only:
-                    _print_ascii_expired(console)
+                    console.print(random.choice(EXPIRED_MESSAGES))
                 else:
-                    console.print("No active timer.")
+                    console.print(NO_ACTIVE_TIMER_MESSAGE)
             return None
         finish_at, duration_sec = state
 
