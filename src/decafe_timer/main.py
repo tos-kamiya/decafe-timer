@@ -27,20 +27,17 @@ PLAIN_CONSOLE = Console(color_system=None, markup=False, highlight=False)
 EXPIRED_MESSAGES = [
     "Cooldown expired! ☕ You may drink coffee now.",
     # やさしく励ましてくれる系
-    "Your break is over — enjoy your coffee, gently.",
+    "Your break is over -- enjoy your coffee, gently.",
     "You’ve waited well. Treat yourself to a warm cup.",
-    "Thanks for taking care of yourself. A little coffee is okay now.",
     # ふんわり癒し系
-    "Your coffee time has arrived — relax and enjoy.",
+    "Your coffee time has arrived -- relax and enjoy.",
     "A warm cup is waiting for you.",
     "The timer’s done. Brew a moment of comfort.",
     # ちょっとユーモア系
     "Permission granted: caffeination may proceed.",
     "Coffee mode unlocked. Use wisely.",
-    "Your patience has been rewarded. Proceed to the beans.",
     # 行動変容をそっと支援する系
     "If you choose to, a small cup won’t hurt now.",
-    "You took a mindful pause — good job. Coffee is okay now.",
     "Ready when you are. Keep listening to your body.",
 ]
 NO_ACTIVE_TIMER_MESSAGE = "No active timer."
