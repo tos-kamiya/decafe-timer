@@ -1,9 +1,11 @@
+import hashlib
 import json
 import random
 import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 from appdirs import user_cache_dir
 from rich.console import Console
@@ -58,6 +60,18 @@ INVALID_DURATION_MESSAGE = (
     "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS. "
     "You can also use remaining/total like 3h/5h."
 )
+
+
+def _select_expired_message(
+    finish_at: Optional[datetime],
+    duration_sec: Optional[int],
+) -> str:
+    if finish_at is None or duration_sec is None:
+        return random.choice(EXPIRED_MESSAGES)
+    key = f"{finish_at.isoformat()}-{duration_sec}".encode("utf-8")
+    digest = hashlib.sha256(key).digest()
+    index = int.from_bytes(digest[:8], "big") % len(EXPIRED_MESSAGES)
+    return EXPIRED_MESSAGES[index]
 
 
 def _schedule_timer_seconds(remaining_sec: int, total_sec: int):
@@ -250,7 +264,7 @@ def run_timer_loop(
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        console.print(random.choice(EXPIRED_MESSAGES))
+        console.print(_select_expired_message(finish_at, duration_sec))
         return
 
     if one_line or graph_only:
@@ -268,7 +282,7 @@ def run_timer_loop(
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        console.print(random.choice(EXPIRED_MESSAGES))
+        console.print(_select_expired_message(finish_at, duration_sec))
 
     except KeyboardInterrupt:
         console.print("\nInterrupted by user. Timer state saved.")
@@ -372,7 +386,7 @@ def _run_ascii_loop(
     except Exception:
         pass
 
-    console.print(random.choice(EXPIRED_MESSAGES))
+    console.print(_select_expired_message(finish_at, duration_sec))
 
 
 def _print_snapshot_status(
@@ -389,7 +403,7 @@ def _print_snapshot_status(
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        console.print(random.choice(EXPIRED_MESSAGES))
+        console.print(_select_expired_message(finish_at, duration_sec))
         return
 
     if graph_only:
@@ -464,7 +478,7 @@ def resume_timer(*, one_line=False, graph_only=False):
     state = load_state()
     if state is None:
         if one_line or graph_only:
-            console.print(random.choice(EXPIRED_MESSAGES))
+            console.print(_select_expired_message(None, None))
         else:
             console.print(NO_ACTIVE_TIMER_MESSAGE)
         return
@@ -475,7 +489,7 @@ def resume_timer(*, one_line=False, graph_only=False):
             STATE_FILE.unlink(missing_ok=True)
         except Exception:
             pass
-        console.print(random.choice(EXPIRED_MESSAGES))
+        console.print(_select_expired_message(finish_at, duration_sec))
         return
     if not one_line and not graph_only:
         console.print(
@@ -578,7 +592,7 @@ def _resolve_timer_state(args):
                 console.print(NO_ACTIVE_TIMER_MESSAGE)
             else:
                 if args.one_line or args.graph_only:
-                    console.print(random.choice(EXPIRED_MESSAGES))
+                    console.print(_select_expired_message(None, None))
                 else:
                     console.print(NO_ACTIVE_TIMER_MESSAGE)
             return None
