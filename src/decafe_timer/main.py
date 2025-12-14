@@ -92,29 +92,74 @@ def _schedule_timer(hours: int, minutes: int, seconds: int):
 # ------------------------------
 # 永続化まわり
 # ------------------------------
+def _read_state_payload():
+    if not STATE_FILE.exists():
+        return {}
+    try:
+        data = json.loads(STATE_FILE.read_text())
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def save_state(finish_at: datetime, duration_sec: int):
     """終了予定時刻と総時間、現在時刻をキャッシュに保存"""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now()
-    data = {
+    payload = {
         "finish_at": finish_at.isoformat(),
         "duration_sec": int(duration_sec),
         "last_saved_at": now.isoformat(),
     }
-    STATE_FILE.write_text(json.dumps(data))
+    existing = _read_state_payload()
+    last_finished = existing.get("last_finished")
+    if isinstance(last_finished, dict):
+        payload["last_finished"] = last_finished
+    STATE_FILE.write_text(json.dumps(payload))
 
 
 def load_state():
     """キャッシュから終了予定時刻と総時間を読み出す"""
-    if not STATE_FILE.exists():
+    data = _read_state_payload()
+    finish_at_raw = data.get("finish_at")
+    duration_raw = data.get("duration_sec")
+    if finish_at_raw is None or duration_raw is None:
         return None
     try:
-        data = json.loads(STATE_FILE.read_text())
-        finish_at = datetime.fromisoformat(data["finish_at"])
-        duration_sec = int(data["duration_sec"])
-        return finish_at, duration_sec
+        finish_at = datetime.fromisoformat(finish_at_raw)
+        duration_sec = int(duration_raw)
     except Exception:
         return None
+    return finish_at, duration_sec
+
+
+def save_last_finished(finish_at: datetime, duration_sec: int):
+    """直近に終了したタイマーの情報だけを保持"""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "last_finished": {
+            "finish_at": finish_at.isoformat(),
+            "duration_sec": int(duration_sec),
+        }
+    }
+    STATE_FILE.write_text(json.dumps(payload))
+
+
+def load_last_finished():
+    data = _read_state_payload()
+    last_finished = data.get("last_finished")
+    if not isinstance(last_finished, dict):
+        return None
+    finish_at_raw = last_finished.get("finish_at")
+    duration_raw = last_finished.get("duration_sec")
+    if finish_at_raw is None or duration_raw is None:
+        return None
+    try:
+        finish_at = datetime.fromisoformat(finish_at_raw)
+        duration_sec = int(duration_raw)
+    except Exception:
+        return None
+    return finish_at, duration_sec
 
 
 # ------------------------------
@@ -261,7 +306,7 @@ def run_timer_loop(
     now = datetime.now()
     if (finish_at - now) <= timedelta(0):
         try:
-            STATE_FILE.unlink(missing_ok=True)
+            save_last_finished(finish_at, duration_sec)
         except Exception:
             pass
         console.print(_select_expired_message(finish_at, duration_sec))
@@ -279,7 +324,7 @@ def run_timer_loop(
         _run_rich_loop(finish_at, duration_sec)
 
         try:
-            STATE_FILE.unlink(missing_ok=True)
+            save_last_finished(finish_at, duration_sec)
         except Exception:
             pass
         console.print(_select_expired_message(finish_at, duration_sec))
@@ -382,7 +427,7 @@ def _run_ascii_loop(
         console.print(" " * last_line_len, end="\r")
 
     try:
-        STATE_FILE.unlink(missing_ok=True)
+        save_last_finished(finish_at, duration_sec)
     except Exception:
         pass
 
@@ -400,7 +445,7 @@ def _print_snapshot_status(
     remaining_sec = int((finish_at - datetime.now()).total_seconds())
     if remaining_sec <= 0:
         try:
-            STATE_FILE.unlink(missing_ok=True)
+            save_last_finished(finish_at, duration_sec)
         except Exception:
             pass
         console.print(_select_expired_message(finish_at, duration_sec))
@@ -477,16 +522,20 @@ def resume_timer(*, one_line=False, graph_only=False):
     console = _get_console(one_line=one_line, graph_only=graph_only)
     state = load_state()
     if state is None:
-        if one_line or graph_only:
-            console.print(_select_expired_message(None, None))
+        last_finished = load_last_finished()
+        if last_finished is not None:
+            console.print(_select_expired_message(*last_finished))
         else:
-            console.print(NO_ACTIVE_TIMER_MESSAGE)
+            if one_line or graph_only:
+                console.print(_select_expired_message(None, None))
+            else:
+                console.print(NO_ACTIVE_TIMER_MESSAGE)
         return
 
     finish_at, duration_sec = state
     if finish_at <= datetime.now():
         try:
-            STATE_FILE.unlink(missing_ok=True)
+            save_last_finished(finish_at, duration_sec)
         except Exception:
             pass
         console.print(_select_expired_message(finish_at, duration_sec))
@@ -591,10 +640,14 @@ def _resolve_timer_state(args):
             if args.run:
                 console.print(NO_ACTIVE_TIMER_MESSAGE)
             else:
-                if args.one_line or args.graph_only:
-                    console.print(_select_expired_message(None, None))
+                last_finished = load_last_finished()
+                if last_finished is not None:
+                    console.print(_select_expired_message(*last_finished))
                 else:
-                    console.print(NO_ACTIVE_TIMER_MESSAGE)
+                    if args.one_line or args.graph_only:
+                        console.print(_select_expired_message(None, None))
+                    else:
+                        console.print(NO_ACTIVE_TIMER_MESSAGE)
             return None
         finish_at, duration_sec = state
 
