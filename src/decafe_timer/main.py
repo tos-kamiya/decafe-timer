@@ -52,9 +52,8 @@ def _get_console(*, one_line: bool = False, graph_only: bool = False) -> Console
 ONE_LINE_BAR_WIDTH = int(max(len(m) for m in EXPIRED_MESSAGES) * 0.6 + 1)
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
 FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
-BAR_FILLED_CHAR = "█"
-BAR_EMPTY_CHAR = "░"
-PARTIAL_BAR_CHARS = ("", "▏", "▎", "▍", "▌", "▋", "▊", "▉")
+BAR_FILLED_CHAR = "\u25AE"  # black vertical rectangle
+BAR_EMPTY_CHAR = "\u25AF"  # white vertical rectangle
 
 INVALID_DURATION_MESSAGE = (
     "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS. "
@@ -495,24 +494,15 @@ def _render_one_line(
     graph_only: bool = False,
 ) -> str:
     remaining_str = _format_remaining(max(remaining_sec, 0))
+    segments = ONE_LINE_BAR_WIDTH
     if duration_sec <= 0:
-        bar = BAR_EMPTY_CHAR * ONE_LINE_BAR_WIDTH
+        bar = BAR_EMPTY_CHAR * segments
     else:
-        ratio = max(0, min(remaining_sec / duration_sec, 1))
-        filled_exact = ratio * ONE_LINE_BAR_WIDTH
-        full_blocks = min(int(filled_exact), ONE_LINE_BAR_WIDTH)
-        remainder = filled_exact - full_blocks
-        partial_index = min(
-            int(remainder * len(PARTIAL_BAR_CHARS)),
-            len(PARTIAL_BAR_CHARS) - 1,
-        )
-        partial_char = PARTIAL_BAR_CHARS[partial_index]
-        bar = BAR_FILLED_CHAR * full_blocks
-        if partial_char and full_blocks < ONE_LINE_BAR_WIDTH:
-            bar += partial_char
-        empty_count = ONE_LINE_BAR_WIDTH - len(bar)
-        if empty_count > 0:
-            bar += BAR_EMPTY_CHAR * empty_count
+        ratio = max(0.0, min(remaining_sec / duration_sec, 1.0))
+        filled_segments = int(ratio * segments + 0.5)
+        filled_segments = max(0, min(filled_segments, segments))
+        empty_segments = segments - filled_segments
+        bar = (BAR_FILLED_CHAR * filled_segments) + (BAR_EMPTY_CHAR * empty_segments)
     if graph_only:
         return f"[{bar}]"
     return f"{remaining_str} [{bar}]"
