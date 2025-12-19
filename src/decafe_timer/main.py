@@ -49,11 +49,11 @@ def _get_console(*, one_line: bool = False, graph_only: bool = False) -> Console
     return PLAIN_CONSOLE if (one_line or graph_only) else COLORED_CONSOLE
 
 
-ONE_LINE_BAR_WIDTH = int(max(len(m) for m in EXPIRED_MESSAGES) * 0.6 + 1)
+ONE_LINE_BAR_WIDTH = int(max(len(m) for m in EXPIRED_MESSAGES) * 0.7 + 1)
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
 FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
-BAR_FILLED_CHAR = "\u25AE"  # black vertical rectangle
-BAR_EMPTY_CHAR = "\u25AF"  # white vertical rectangle
+BAR_FILLED_CHAR = "\U0001d15b"  # black vertical rectangle
+BAR_EMPTY_CHAR = "\U0001d15a"  # white vertical rectangle
 
 INVALID_DURATION_MESSAGE = (
     "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS. "
@@ -504,8 +504,8 @@ def _render_one_line(
         empty_segments = segments - filled_segments
         bar = (BAR_FILLED_CHAR * filled_segments) + (BAR_EMPTY_CHAR * empty_segments)
     if graph_only:
-        return f"[{bar}]"
-    return f"{remaining_str} [{bar}]"
+        return f"{bar}"
+    return f"{remaining_str} {bar}"
 
 
 def resume_timer(*, one_line=False, graph_only=False):
