@@ -54,6 +54,22 @@ DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
 FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
 BAR_FILLED_CHAR = "\U0001d15b"  # black vertical rectangle
 BAR_EMPTY_CHAR = "\U0001d15a"  # white vertical rectangle
+BRAILLE_FULL_CHAR = "\u2588"  # full block
+BAR_STYLE_BLOCKS = "blocks"
+BAR_STYLE_BRAILLE = "braille"
+# Braille levels fill left-to-right, bottom-to-top so shrinking removes dots
+# right-to-left, top-to-bottom.
+BRAILLE_LEVELS = [
+    "\u2800",
+    "\u2840",
+    "\u2844",
+    "\u2846",
+    "\u2847",
+    "\u28c7",
+    "\u28e7",
+    "\u28f7",
+    "\u28ff",
+]
 
 INVALID_DURATION_MESSAGE = (
     "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS. "
@@ -264,6 +280,7 @@ def start_timer(
     *,
     one_line=False,
     graph_only=False,
+    bar_style: str = BAR_STYLE_BRAILLE,
 ):
     console = _get_console(one_line=one_line, graph_only=graph_only)
     try:
@@ -283,6 +300,7 @@ def start_timer(
         duration_sec,
         one_line=one_line,
         graph_only=graph_only,
+        bar_style=bar_style,
     )
 
 
@@ -292,6 +310,7 @@ def run_timer_loop(
     *,
     one_line: bool = False,
     graph_only: bool = False,
+    bar_style: str = BAR_STYLE_BRAILLE,
 ):
     console = _get_console(one_line=one_line, graph_only=graph_only)
     # resume 用に state から読み直すケース
@@ -316,6 +335,7 @@ def run_timer_loop(
             finish_at,
             duration_sec,
             graph_only=graph_only,
+            bar_style=bar_style,
         )
         return
 
@@ -382,6 +402,7 @@ def _run_ascii_loop(
     duration_sec: int,
     *,
     graph_only: bool = False,
+    bar_style: str = BAR_STYLE_BRAILLE,
 ):
     console = _get_console(one_line=True, graph_only=graph_only)
     last_saved_minute = None
@@ -400,6 +421,7 @@ def _run_ascii_loop(
                 remaining_sec,
                 duration_sec,
                 graph_only=graph_only,
+                bar_style=bar_style,
             )
             pad = max(last_line_len - len(line), 0)
             output = line + (" " * pad)
@@ -439,6 +461,7 @@ def _print_snapshot_status(
     *,
     one_line: bool = False,
     graph_only: bool = False,
+    bar_style: str = BAR_STYLE_BRAILLE,
 ):
     console = _get_console(one_line=one_line, graph_only=graph_only)
     remaining_sec = int((finish_at - datetime.now()).total_seconds())
@@ -455,6 +478,7 @@ def _print_snapshot_status(
             remaining_sec,
             duration_sec,
             graph_only=True,
+            bar_style=bar_style,
         )
         console.print(line, markup=False)
         return
@@ -464,6 +488,7 @@ def _print_snapshot_status(
             remaining_sec,
             duration_sec,
             graph_only=False,
+            bar_style=bar_style,
         )
         console.print(line, markup=False)
         return
@@ -474,6 +499,7 @@ def _print_snapshot_status(
         remaining_sec,
         duration_sec,
         graph_only=True,
+        bar_style=bar_style,
     )
     console.print(f"Remaining: {remaining_str}")
     console.print(f"Expires at: {expires_at}")
@@ -492,23 +518,52 @@ def _render_one_line(
     duration_sec: int,
     *,
     graph_only: bool = False,
+    bar_style: str = BAR_STYLE_BRAILLE,
 ) -> str:
     remaining_str = _format_remaining(max(remaining_sec, 0))
     segments = ONE_LINE_BAR_WIDTH
     if duration_sec <= 0:
-        bar = BAR_EMPTY_CHAR * segments
+        bar = _render_empty_bar(segments, bar_style)
     else:
         ratio = max(0.0, min(remaining_sec / duration_sec, 1.0))
-        filled_segments = int(ratio * segments + 0.5)
-        filled_segments = max(0, min(filled_segments, segments))
-        empty_segments = segments - filled_segments
-        bar = (BAR_FILLED_CHAR * filled_segments) + (BAR_EMPTY_CHAR * empty_segments)
+        bar = _render_filled_bar(segments, ratio, bar_style)
     if graph_only:
         return f"{bar}"
     return f"{remaining_str} {bar}"
 
 
-def resume_timer(*, one_line=False, graph_only=False):
+def _render_empty_bar(segments: int, bar_style: str) -> str:
+    if bar_style == BAR_STYLE_BLOCKS:
+        return BAR_EMPTY_CHAR * segments
+    return BRAILLE_LEVELS[0] * segments
+
+
+def _render_filled_bar(segments: int, ratio: float, bar_style: str) -> str:
+    ratio = max(0.0, min(ratio, 1.0))
+    if bar_style == BAR_STYLE_BLOCKS:
+        filled_segments = int(ratio * segments + 0.5)
+        filled_segments = max(0, min(filled_segments, segments))
+        empty_segments = segments - filled_segments
+        return (BAR_FILLED_CHAR * filled_segments) + (BAR_EMPTY_CHAR * empty_segments)
+
+    total_units = segments * 16
+    filled_units = int(ratio * total_units + 0.5)
+    filled_units = max(0, min(filled_units, total_units))
+    full_blocks = filled_units // 16
+    remainder = filled_units % 16
+    empty_blocks = segments - full_blocks - (1 if remainder else 0)
+    bar = BRAILLE_FULL_CHAR * full_blocks
+    if remainder:
+        left_units = min(remainder, 8)
+        right_units = max(0, remainder - 8)
+        bar += BRAILLE_LEVELS[left_units]
+        bar += BRAILLE_LEVELS[right_units]
+    if empty_blocks > 0:
+        bar += BRAILLE_LEVELS[0] * empty_blocks
+    return bar
+
+
+def resume_timer(*, one_line=False, graph_only=False, bar_style: str = BAR_STYLE_BRAILLE):
     console = _get_console(one_line=one_line, graph_only=graph_only)
     state = load_state()
     if state is None:
@@ -539,6 +594,7 @@ def resume_timer(*, one_line=False, graph_only=False):
         duration_sec,
         one_line=one_line,
         graph_only=graph_only,
+        bar_style=bar_style,
     )
 
 
@@ -566,6 +622,7 @@ def main(argv=None):
         duration_sec,
         one_line=args.one_line,
         graph_only=args.graph_only,
+        bar_style=args.bar_style,
     )
 
 
@@ -601,6 +658,12 @@ def _parse_args(argv=None):
         "--run",
         action="store_true",
         help="Keep updating continuously until the timer expires.",
+    )
+    parser.add_argument(
+        "--bar-style",
+        choices=(BAR_STYLE_BRAILLE, BAR_STYLE_BLOCKS),
+        default=BAR_STYLE_BRAILLE,
+        help="Pick the ASCII bar style (default: braille).",
     )
     return parser.parse_args(argv)
 
@@ -665,6 +728,7 @@ def _run_live_mode(args, finish_at, duration_sec, new_timer_started):
         duration_sec,
         one_line=args.one_line,
         graph_only=args.graph_only,
+        bar_style=args.bar_style,
     )
 
 
