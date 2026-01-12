@@ -73,6 +73,26 @@ INVALID_DURATION_MESSAGE = (
 )
 
 
+def _ansi_table(enabled: bool) -> dict[str, str]:
+    if not enabled:
+        return {
+            "reset": "",
+            "dim": "",
+            "red": "",
+            "yellow": "",
+            "green": "",
+            "blue": "",
+        }
+    return {
+        "reset": ANSI_RESET,
+        "dim": ANSI_DIM,
+        "red": ANSI_RED,
+        "yellow": ANSI_YELLOW,
+        "green": ANSI_GREEN,
+        "blue": ANSI_BLUE,
+    }
+
+
 def _select_expired_message(
     finish_at: Optional[datetime],
     duration_sec: Optional[int],
@@ -306,6 +326,7 @@ def run_timer_loop(
     one_line: bool = False,
     graph_only: bool = False,
     bar_style: str = BAR_STYLE_GREEK_CROSS,
+    use_ansi: bool = True,
 ):
     # resume 用に state から読み直すケース
     if finish_at is None or duration_sec is None:
@@ -331,7 +352,7 @@ def run_timer_loop(
             one_line=one_line,
             graph_only=graph_only,
             bar_style=bar_style,
-            use_ansi=True,
+            use_ansi=use_ansi,
         )
 
         try:
@@ -447,27 +468,6 @@ def _format_remaining(remaining_sec: int) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-def _render_one_line(
-    remaining_sec: int,
-    duration_sec: int,
-    *,
-    graph_only: bool = False,
-    bar_style: str = BAR_STYLE_GREEK_CROSS,
-) -> str:
-    remaining_str = _format_remaining(max(remaining_sec, 0))
-    segments = _bar_segments(bar_style)
-    if duration_sec <= 0:
-        bar = _render_empty_bar(segments, bar_style)
-    else:
-        ratio = max(0.0, min(remaining_sec / duration_sec, 1.0))
-        bar = _render_filled_bar(segments, ratio, bar_style)
-    if bar_style == BAR_STYLE_GREEK_CROSS:
-        bar = " ".join(bar)
-    if graph_only:
-        return f"{bar}"
-    return f"{remaining_str} {bar}"
-
-
 def _render_live_line(
     remaining_sec: int,
     duration_sec: int,
@@ -493,47 +493,16 @@ def _render_snapshot_line(
     bar_style: str = BAR_STYLE_GREEK_CROSS,
     use_ansi: bool = False,
 ) -> str:
-    if not use_ansi:
-        return _render_one_line(
-            remaining_sec,
-            duration_sec,
-            graph_only=graph_only,
-            bar_style=bar_style,
-        )
+    ansi = _ansi_table(use_ansi)
     remaining_str = _format_remaining(max(remaining_sec, 0))
     if duration_sec <= 0:
         ratio = 0.0
     else:
         ratio = max(0.0, min(remaining_sec / duration_sec, 1.0))
-    bar = _render_bar_ansi(_bar_segments(bar_style), ratio, bar_style)
+    bar = _render_bar(_bar_segments(bar_style), ratio, bar_style, ansi)
     if graph_only:
         return bar
     return f"{remaining_str} {bar}"
-
-
-def _render_empty_bar(segments: int, bar_style: str) -> str:
-    if bar_style == BAR_STYLE_BLOCKS:
-        return BAR_EMPTY_CHAR * segments
-    return GREEK_CROSS_EMPTY_CHAR * segments
-
-
-def _render_filled_bar(segments: int, ratio: float, bar_style: str) -> str:
-    ratio = max(0.0, min(ratio, 1.0))
-    if bar_style == BAR_STYLE_BLOCKS:
-        filled_segments = int(ratio * segments + 0.5)
-        filled_segments = max(0, min(filled_segments, segments))
-        empty_segments = segments - filled_segments
-        return (BAR_FILLED_CHAR * filled_segments) + (BAR_EMPTY_CHAR * empty_segments)
-
-    full_blocks, remainder, empty_blocks = _compute_greek_cross_segments(
-        segments, ratio
-    )
-    bar = GREEK_CROSS_FULL_CHAR * full_blocks
-    if remainder:
-        bar += GREEK_CROSS_LEVELS[remainder]
-    if empty_blocks > 0:
-        bar += GREEK_CROSS_EMPTY_CHAR * empty_blocks
-    return bar
 
 
 def _compute_greek_cross_segments(segments: int, ratio: float):
@@ -548,64 +517,66 @@ def _compute_greek_cross_segments(segments: int, ratio: float):
     return full_blocks, remainder, empty_blocks
 
 
-def _bar_color_for_ratio(ratio: float) -> str:
+def _bar_color_for_ratio(ratio: float, *, ansi: dict[str, str]) -> str:
     if ratio >= 0.3:
-        return ANSI_RED
+        return ansi["red"]
     if ratio >= 0.15:
-        return ANSI_YELLOW
+        return ansi["yellow"]
     if ratio >= 0.07:
-        return ANSI_GREEN
-    return ANSI_BLUE
+        return ansi["green"]
+    return ansi["blue"]
 
 
-def _render_greek_cross_bar_ansi(segments: int, ratio: float) -> str:
+def _render_greek_cross_bar(
+    segments: int, ratio: float, *, ansi: dict[str, str]
+) -> str:
     full_blocks, remainder, empty_blocks = _compute_greek_cross_segments(
         segments, ratio
     )
-    filled_style = _bar_color_for_ratio(ratio)
+    filled_style = _bar_color_for_ratio(ratio, ansi=ansi)
     pieces = []
     pieces.extend([(GREEK_CROSS_FULL_CHAR, filled_style)] * full_blocks)
     if remainder:
         pieces.append((GREEK_CROSS_LEVELS[remainder], filled_style))
-    pieces.extend([(GREEK_CROSS_EMPTY_CHAR, ANSI_DIM)] * empty_blocks)
-    return _render_ansi_spaced(pieces)
+    pieces.extend([(GREEK_CROSS_EMPTY_CHAR, ansi["dim"])] * empty_blocks)
+    return _render_ansi_spaced(pieces, ansi=ansi)
 
 
-def _render_blocks_bar_ansi(segments: int, ratio: float) -> str:
+def _render_blocks_bar(segments: int, ratio: float, *, ansi: dict[str, str]) -> str:
     ratio = max(0.0, min(ratio, 1.0))
     filled_segments = int(ratio * segments + 0.5)
     filled_segments = max(0, min(filled_segments, segments))
     empty_segments = segments - filled_segments
-    color = _bar_color_for_ratio(ratio)
+    color = _bar_color_for_ratio(ratio, ansi=ansi)
     return (
-        f"{ANSI_RESET}{color}"
+        f"{ansi['reset']}{color}"
         + (BAR_FILLED_CHAR * filled_segments)
-        + f"{ANSI_RESET}{ANSI_DIM}"
+        + f"{ansi['reset']}{ansi['dim']}"
         + (BAR_EMPTY_CHAR * empty_segments)
-        + ANSI_RESET
+        + ansi["reset"]
     )
 
 
-def _render_bar_ansi(segments: int, ratio: float, bar_style: str) -> str:
+def _render_bar(segments: int, ratio: float, bar_style: str, ansi: dict[str, str]) -> str:
     if bar_style == BAR_STYLE_BLOCKS:
-        return _render_blocks_bar_ansi(segments, ratio)
-    return _render_greek_cross_bar_ansi(segments, ratio)
+        return _render_blocks_bar(segments, ratio, ansi=ansi)
+    return _render_greek_cross_bar(segments, ratio, ansi=ansi)
 
 
-def _render_ansi_spaced(pieces):
+def _render_ansi_spaced(pieces, *, ansi: dict[str, str]):
     output = []
     current_style = None
     for index, (char, style) in enumerate(pieces):
         if index:
             output.append(" ")
         if style != current_style:
-            output.append(ANSI_RESET)
+            output.append(ansi["reset"])
             if style:
                 output.append(style)
             current_style = style
         output.append(char)
     if current_style is not None:
-        output.append(ANSI_RESET)
+        output.append(ansi["reset"])
     return "".join(output)
 
 
@@ -797,6 +768,7 @@ def _run_live_mode(args, finish_at, duration_sec, new_timer_started):
         one_line=args.one_line,
         graph_only=args.graph_only,
         bar_style=args.bar_style,
+        use_ansi=_should_use_ansi(args),
     )
 
 
