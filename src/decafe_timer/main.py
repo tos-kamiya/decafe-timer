@@ -39,6 +39,7 @@ EXPIRED_MESSAGES = [
     "You did the wait. Now choose what feels right.",
 ]
 NO_ACTIVE_TIMER_MESSAGE = "No active timer."
+BROKEN_STATE_MESSAGE = "State file is invalid; ignoring it."
 
 
 BAR_CHAR_WIDTH = 20
@@ -138,19 +139,45 @@ def _schedule_timer(hours: int, minutes: int, seconds: int):
 # ------------------------------
 # 永続化まわり
 # ------------------------------
+_broken_state_notice_shown = False
+
+
+def _warn_broken_state():
+    global _broken_state_notice_shown
+    if _broken_state_notice_shown:
+        return
+    print(BROKEN_STATE_MESSAGE)
+    _broken_state_notice_shown = True
+
+
 def _read_state_payload():
     if not STATE_FILE.exists():
         return {}
     try:
-        data = json.loads(STATE_FILE.read_text())
-    except Exception:
+        text = STATE_FILE.read_text()
+    except OSError:
+        _warn_broken_state()
         return {}
-    return data if isinstance(data, dict) else {}
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        _warn_broken_state()
+        return {}
+    if not isinstance(data, dict):
+        _warn_broken_state()
+        return {}
+    return data
+
+
+def _write_state_payload(payload: dict):
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp_path = STATE_FILE.with_name(f"{STATE_FILE.name}.tmp")
+    tmp_path.write_text(json.dumps(payload))
+    tmp_path.replace(STATE_FILE)
 
 
 def save_state(finish_at: datetime, duration_sec: int):
     """終了予定時刻と総時間、現在時刻をキャッシュに保存"""
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     now = datetime.now()
     payload = {
         "finish_at": finish_at.isoformat(),
@@ -161,7 +188,7 @@ def save_state(finish_at: datetime, duration_sec: int):
     last_finished = existing.get("last_finished")
     if isinstance(last_finished, dict):
         payload["last_finished"] = last_finished
-    STATE_FILE.write_text(json.dumps(payload))
+    _write_state_payload(payload)
 
 
 def load_state():
@@ -181,14 +208,13 @@ def load_state():
 
 def save_last_finished(finish_at: datetime, duration_sec: int):
     """直近に終了したタイマーの情報だけを保持"""
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
         "last_finished": {
             "finish_at": finish_at.isoformat(),
             "duration_sec": int(duration_sec),
         }
     }
-    STATE_FILE.write_text(json.dumps(payload))
+    _write_state_payload(payload)
 
 
 def load_last_finished():
@@ -389,10 +415,13 @@ def _run_live_loop(
     bar_style: str = BAR_STYLE_GREEK_CROSS,
     use_ansi: bool = False,
 ):
-    last_saved_minute = None
     last_line_len = 0
 
     while True:
+        state = load_state()
+        if state is not None:
+            finish_at, duration_sec = state
+
         now = datetime.now()
         remaining = finish_at - now
         remaining_sec = int(remaining.total_seconds())
@@ -411,10 +440,6 @@ def _run_live_loop(
         pad = max(last_line_len - visible_len, 0)
         print(line + (" " * pad), end="\r", flush=True)
         last_line_len = visible_len
-
-        if last_saved_minute != now.minute:
-            save_state(finish_at, duration_sec)
-            last_saved_minute = now.minute
 
         time.sleep(1)
 
