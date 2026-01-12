@@ -5,11 +5,11 @@ build-backend = "hatchling.build"
 [project]
 name = "decafe-timer"
 dynamic = ["version"]
-description = ''
+description = "CLI coffee cooldown timer with a shrinking ASCII bar."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = "MIT"
-keywords = []
+keywords = ["coffee", "timer", "cli", "productivity"]
 authors = [
   { name = "Toshihiro Kamiya", email = "kamiya@mbj.nifty.com" },
 ]
@@ -26,19 +26,11 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/Toshihiro Kamiya/decafe-timer#readme"
-Issues = "https://github.com/Toshihiro Kamiya/decafe-timer/issues"
-Source = "https://github.com/Toshihiro Kamiya/decafe-timer"
+Issues = "https://github.com/tos-kamiya/decafe-timer/issues"
+Source = "https://github.com/tos-kamiya/decafe-timer"
 
 [tool.hatch.version]
 path = "src/decafe_timer/__about__.py"
-
-[tool.hatch.envs.types]
-extra-dependencies = [
-  "mypy>=1.0.0",
-]
-[tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/decafe_timer tests}"
 
 [tool.coverage.run]
 source_pkgs = ["decafe_timer", "tests"]
