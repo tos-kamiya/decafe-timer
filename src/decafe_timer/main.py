@@ -2,6 +2,7 @@ import hashlib
 import json
 import random
 import re
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -323,17 +324,15 @@ def run_timer_loop(
         print(_select_expired_message(finish_at, duration_sec))
         return
 
-    if one_line or graph_only:
-        _run_ascii_loop(
+    try:
+        _run_live_loop(
             finish_at,
             duration_sec,
+            one_line=one_line,
             graph_only=graph_only,
             bar_style=bar_style,
+            use_ansi=True,
         )
-        return
-
-    try:
-        _run_ansi_loop(finish_at, duration_sec, bar_style=bar_style)
 
         try:
             save_last_finished(finish_at, duration_sec)
@@ -345,11 +344,14 @@ def run_timer_loop(
         print("\nInterrupted by user. Timer state saved.")
 
 
-def _run_ansi_loop(
+def _run_live_loop(
     finish_at: datetime,
     duration_sec: int,
     *,
+    one_line: bool = False,
+    graph_only: bool = False,
     bar_style: str = BAR_STYLE_GREEK_CROSS,
+    use_ansi: bool = False,
 ):
     last_saved_minute = None
     last_line_len = 0
@@ -362,14 +364,14 @@ def _run_ansi_loop(
         if remaining_sec <= 0:
             break
 
-        remaining_str = _format_remaining(remaining_sec)
-        if duration_sec <= 0:
-            ratio = 0.0
-        else:
-            ratio = max(0.0, min(remaining_sec / duration_sec, 1.0))
-        bar = _render_bar_ansi(_bar_segments(bar_style), ratio, bar_style)
-        line = f"{remaining_str} {bar}"
-        visible_len = _visible_length(line)
+        line = _render_live_line(
+            remaining_sec,
+            duration_sec,
+            graph_only=graph_only,
+            bar_style=bar_style,
+            use_ansi=use_ansi,
+        )
+        visible_len = _visible_length(line) if use_ansi else len(line)
         pad = max(last_line_len - visible_len, 0)
         print(line + (" " * pad), end="\r", flush=True)
         last_line_len = visible_len
@@ -384,61 +386,6 @@ def _run_ansi_loop(
         print(" " * last_line_len, end="\r", flush=True)
 
 
-def _run_ascii_loop(
-    finish_at: datetime,
-    duration_sec: int,
-    *,
-    graph_only: bool = False,
-    bar_style: str = BAR_STYLE_GREEK_CROSS,
-):
-    last_saved_minute = None
-    last_line_len = 0
-
-    try:
-        while True:
-            now = datetime.now()
-            remaining = finish_at - now
-            remaining_sec = int(remaining.total_seconds())
-
-            if remaining_sec <= 0:
-                break
-
-            line = _render_one_line(
-                remaining_sec,
-                duration_sec,
-                graph_only=graph_only,
-                bar_style=bar_style,
-            )
-            pad = max(last_line_len - len(line), 0)
-            output = line + (" " * pad)
-            print(
-                output,
-                end="\r",
-            )
-            last_line_len = len(line)
-
-            if last_saved_minute != now.minute:
-                save_state(finish_at, duration_sec)
-                last_saved_minute = now.minute
-
-            time.sleep(1)
-
-    except KeyboardInterrupt:
-        print("\nInterrupted by user. Timer state saved.")
-        return
-
-    # Clear the current line before printing the final message.
-    if last_line_len:
-        print(" " * last_line_len, end="\r")
-
-    try:
-        save_last_finished(finish_at, duration_sec)
-    except Exception:
-        pass
-
-    print(_select_expired_message(finish_at, duration_sec))
-
-
 def _print_snapshot_status(
     finish_at: datetime,
     duration_sec: int,
@@ -446,6 +393,7 @@ def _print_snapshot_status(
     one_line: bool = False,
     graph_only: bool = False,
     bar_style: str = BAR_STYLE_GREEK_CROSS,
+    use_ansi: bool = False,
 ):
     remaining_sec = int((finish_at - datetime.now()).total_seconds())
     if remaining_sec <= 0:
@@ -457,32 +405,35 @@ def _print_snapshot_status(
         return
 
     if graph_only:
-        line = _render_one_line(
+        line = _render_snapshot_line(
             remaining_sec,
             duration_sec,
             graph_only=True,
             bar_style=bar_style,
+            use_ansi=use_ansi,
         )
         print(line)
         return
 
     if one_line:
-        line = _render_one_line(
+        line = _render_snapshot_line(
             remaining_sec,
             duration_sec,
             graph_only=False,
             bar_style=bar_style,
+            use_ansi=use_ansi,
         )
         print(line)
         return
 
     expires_at = finish_at.strftime("%Y-%m-%d %H:%M:%S")
     remaining_str = _format_remaining(remaining_sec)
-    bar_line = _render_one_line(
+    bar_line = _render_snapshot_line(
         remaining_sec,
         duration_sec,
         graph_only=True,
         bar_style=bar_style,
+        use_ansi=use_ansi,
     )
     print(f"Remaining: {remaining_str}")
     print(f"Expires at: {expires_at}")
@@ -510,8 +461,53 @@ def _render_one_line(
     else:
         ratio = max(0.0, min(remaining_sec / duration_sec, 1.0))
         bar = _render_filled_bar(segments, ratio, bar_style)
+    if bar_style == BAR_STYLE_GREEK_CROSS:
+        bar = " ".join(bar)
     if graph_only:
         return f"{bar}"
+    return f"{remaining_str} {bar}"
+
+
+def _render_live_line(
+    remaining_sec: int,
+    duration_sec: int,
+    *,
+    graph_only: bool = False,
+    bar_style: str = BAR_STYLE_GREEK_CROSS,
+    use_ansi: bool = False,
+) -> str:
+    return _render_snapshot_line(
+        remaining_sec,
+        duration_sec,
+        graph_only=graph_only,
+        bar_style=bar_style,
+        use_ansi=use_ansi,
+    )
+
+
+def _render_snapshot_line(
+    remaining_sec: int,
+    duration_sec: int,
+    *,
+    graph_only: bool = False,
+    bar_style: str = BAR_STYLE_GREEK_CROSS,
+    use_ansi: bool = False,
+) -> str:
+    if not use_ansi:
+        return _render_one_line(
+            remaining_sec,
+            duration_sec,
+            graph_only=graph_only,
+            bar_style=bar_style,
+        )
+    remaining_str = _format_remaining(max(remaining_sec, 0))
+    if duration_sec <= 0:
+        ratio = 0.0
+    else:
+        ratio = max(0.0, min(remaining_sec / duration_sec, 1.0))
+    bar = _render_bar_ansi(_bar_segments(bar_style), ratio, bar_style)
+    if graph_only:
+        return bar
     return f"{remaining_str} {bar}"
 
 
@@ -622,6 +618,16 @@ def _bar_segments(bar_style: str) -> int:
         return BAR_CHAR_WIDTH_BLOCKS
     return BAR_CHAR_WIDTH
 
+
+def _should_use_ansi(args) -> bool:
+    color = getattr(args, "color", "auto")
+    if color == "always":
+        return True
+    if color == "never":
+        return False
+    return sys.stdout.isatty()
+
+
 def resume_timer(
     *, one_line=False, graph_only=False, bar_style: str = BAR_STYLE_GREEK_CROSS
 ):
@@ -683,6 +689,7 @@ def main(argv=None):
         one_line=args.one_line,
         graph_only=args.graph_only,
         bar_style=args.bar_style,
+        use_ansi=_should_use_ansi(args),
     )
 
 
@@ -724,6 +731,12 @@ def _parse_args(argv=None):
         choices=(BAR_STYLE_GREEK_CROSS, BAR_STYLE_BLOCKS),
         default=BAR_STYLE_GREEK_CROSS,
         help="Pick the ASCII bar style (default: greek-cross).",
+    )
+    parser.add_argument(
+        "--color",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help="Control ANSI colors (auto, always, never).",
     )
     return parser.parse_args(argv)
 
