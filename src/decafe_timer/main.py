@@ -49,6 +49,7 @@ ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 BAR_STYLE_BLOCKS = "blocks"
 BAR_STYLE_GREEK_CROSS = "greek-cross"
+BAR_STYLE_COUNTING_ROD = "counting-rod"
 BAR_FILLED_CHAR = "\U0001d15b"  # black vertical rectangle
 BAR_EMPTY_CHAR = "\U0001d15a"  # white vertical rectangle
 # ANSI color helpers for live mode.
@@ -70,6 +71,16 @@ GREEK_CROSS_LEVELS = [
 ]
 GREEK_CROSS_EMPTY_CHAR = GREEK_CROSS_LEVELS[0]
 GREEK_CROSS_FULL_CHAR = GREEK_CROSS_LEVELS[-1]
+# Counting rod numerals from lowest to highest (U+1D369..U+1D36D).
+COUNTING_ROD_LEVELS = [
+    "\U0001d369",
+    "\U0001d36a",
+    "\U0001d36b",
+    "\U0001d36c",
+    "\U0001d36d",
+]
+COUNTING_ROD_EMPTY_CHAR = COUNTING_ROD_LEVELS[0]
+COUNTING_ROD_FULL_CHAR = COUNTING_ROD_LEVELS[-1]
 
 INVALID_DURATION_MESSAGE = (
     "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS. "
@@ -509,9 +520,9 @@ def _render_snapshot_line(
     return f"{remaining_str} {bar}"
 
 
-def _compute_greek_cross_segments(segments: int, ratio: float):
+def _compute_level_segments(levels: list[str], segments: int, ratio: float):
     ratio = max(0.0, min(ratio, 1.0))
-    units_per_block = len(GREEK_CROSS_LEVELS) - 1
+    units_per_block = len(levels) - 1
     total_units = segments * units_per_block
     filled_units = int(ratio * total_units + 0.5)
     filled_units = max(0, min(filled_units, total_units))
@@ -534,8 +545,8 @@ def _bar_color_for_ratio(ratio: float, *, ansi: dict[str, str]) -> str:
 def _render_greek_cross_bar(
     segments: int, ratio: float, *, ansi: dict[str, str]
 ) -> str:
-    full_blocks, remainder, empty_blocks = _compute_greek_cross_segments(
-        segments, ratio
+    full_blocks, remainder, empty_blocks = _compute_level_segments(
+        GREEK_CROSS_LEVELS, segments, ratio
     )
     filled_style = _bar_color_for_ratio(ratio, ansi=ansi)
     pieces = []
@@ -543,6 +554,21 @@ def _render_greek_cross_bar(
     if remainder:
         pieces.append((GREEK_CROSS_LEVELS[remainder], filled_style))
     pieces.extend([(GREEK_CROSS_EMPTY_CHAR, ansi["dim"])] * empty_blocks)
+    return _render_ansi_spaced(pieces, ansi=ansi)
+
+
+def _render_counting_rod_bar(
+    segments: int, ratio: float, *, ansi: dict[str, str]
+) -> str:
+    full_blocks, remainder, empty_blocks = _compute_level_segments(
+        COUNTING_ROD_LEVELS, segments, ratio
+    )
+    filled_style = _bar_color_for_ratio(ratio, ansi=ansi)
+    pieces = []
+    pieces.extend([(COUNTING_ROD_FULL_CHAR, filled_style)] * full_blocks)
+    if remainder:
+        pieces.append((COUNTING_ROD_LEVELS[remainder], filled_style))
+    pieces.extend([(COUNTING_ROD_EMPTY_CHAR, ansi["dim"])] * empty_blocks)
     return _render_ansi_spaced(pieces, ansi=ansi)
 
 
@@ -564,6 +590,8 @@ def _render_blocks_bar(segments: int, ratio: float, *, ansi: dict[str, str]) -> 
 def _render_bar(segments: int, ratio: float, bar_style: str, ansi: dict[str, str]) -> str:
     if bar_style == BAR_STYLE_BLOCKS:
         return _render_blocks_bar(segments, ratio, ansi=ansi)
+    if bar_style == BAR_STYLE_COUNTING_ROD:
+        return _render_counting_rod_bar(segments, ratio, ansi=ansi)
     return _render_greek_cross_bar(segments, ratio, ansi=ansi)
 
 
@@ -703,7 +731,11 @@ def _parse_args(argv=None):
     )
     parser.add_argument(
         "--bar-style",
-        choices=(BAR_STYLE_GREEK_CROSS, BAR_STYLE_BLOCKS),
+        choices=(
+            BAR_STYLE_GREEK_CROSS,
+            BAR_STYLE_COUNTING_ROD,
+            BAR_STYLE_BLOCKS,
+        ),
         default=BAR_STYLE_GREEK_CROSS,
         help="Pick the ASCII bar style (default: greek-cross).",
     )
