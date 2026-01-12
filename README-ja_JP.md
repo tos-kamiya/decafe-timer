@@ -3,15 +3,10 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/decafe-timer.svg)](https://pypi.org/project/decafe-timer)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/decafe-timer.svg)](https://pypi.org/project/decafe-timer)
 
+コーヒーブレイクやカフェイン摂取の間隔を管理する、軽量なCLIクールダウンタイマーです。
+カフェインを摂りすぎていないか、依存になっていないか気になる方のために作りました。
+
 ![decafe-timer screenshot](https://raw.githubusercontent.com/tos-kamiya/decafe-timer/main/images/shot1.png)
-
------
-
-## 目次
-
-- [インストール](#インストール)
-- [使い方](#使い方)
-- [ライセンス](#ライセンス)
 
 ## インストール
 

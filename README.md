@@ -3,15 +3,10 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/decafe-timer.svg)](https://pypi.org/project/decafe-timer)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/decafe-timer.svg)](https://pypi.org/project/decafe-timer)
 
+A lightweight CLI cooldown timer for coffee breaks and caffeine tracking.
+It was created for people who worry about taking too much caffeine and becoming dependent on it.
+
 ![decafe-timer screenshot](https://raw.githubusercontent.com/tos-kamiya/decafe-timer/main/images/shot1.png)
-
------
-
-## Table of Contents
-
-- [Installation](#installation)
-- [Usage](#usage)
-- [License](#license)
 
 ## Installation
 
