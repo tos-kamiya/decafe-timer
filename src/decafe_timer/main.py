@@ -37,6 +37,7 @@ NO_ACTIVE_TIMER_MESSAGE = "No active timer."
 
 
 BAR_CHAR_WIDTH = 20
+BAR_CHAR_WIDTH_BLOCKS = BAR_CHAR_WIDTH * 2
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
 FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
@@ -366,7 +367,7 @@ def _run_ansi_loop(
             ratio = 0.0
         else:
             ratio = max(0.0, min(remaining_sec / duration_sec, 1.0))
-        bar = _render_bar_ansi(BAR_CHAR_WIDTH, ratio, bar_style)
+        bar = _render_bar_ansi(_bar_segments(bar_style), ratio, bar_style)
         line = f"{remaining_str} {bar}"
         visible_len = _visible_length(line)
         pad = max(last_line_len - visible_len, 0)
@@ -503,7 +504,7 @@ def _render_one_line(
     bar_style: str = BAR_STYLE_GREEK_CROSS,
 ) -> str:
     remaining_str = _format_remaining(max(remaining_sec, 0))
-    segments = BAR_CHAR_WIDTH
+    segments = _bar_segments(bar_style)
     if duration_sec <= 0:
         bar = _render_empty_bar(segments, bar_style)
     else:
@@ -614,6 +615,12 @@ def _render_ansi_spaced(pieces):
 
 def _visible_length(text: str) -> int:
     return len(ANSI_ESCAPE_PATTERN.sub("", text))
+
+
+def _bar_segments(bar_style: str) -> int:
+    if bar_style == BAR_STYLE_BLOCKS:
+        return BAR_CHAR_WIDTH_BLOCKS
+    return BAR_CHAR_WIDTH
 
 def resume_timer(
     *, one_line=False, graph_only=False, bar_style: str = BAR_STYLE_GREEK_CROSS
