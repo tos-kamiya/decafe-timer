@@ -16,7 +16,7 @@
 ## Installation
 
 ```console
-pip install decafe-timer
+pipx install decafe-timer
 ```
 
 ## Usage
