@@ -21,18 +21,20 @@ pip install decafe-timer
 
 CLI の基本は次の 3 点です。
 
-1. `2h`、`15m30s`、`0:45:00` のように長さを渡すと新しいクールダウンが作成され、引数なしなら保存済みのタイマーを再開します。
-2. `--run` はリッチな進行状況を最後まで表示し続けるかどうかを決めます。付けなければ現在の状態を 1 回だけ表示して終了します。
-3. スタイル指定で ASCII レイアウトを切り替えられます。デフォルトは複数行 (`Remaining` / `Expires at` + バー)、`--one-line` は `HH:MM:SS ⣿⣇⣀…` 表記、`--graph-only` は時間表示なしのバーのみ。`--bar-style` でバーの文字を切り替えられます (デフォルトは `braille`、以前のブロック表示は `blocks`)。どのモードでも指定できます。`--run` と併用した場合はリッチ Progress の代わりに指定した ASCII 表示でライブ更新されます。スナップショット表示ではクールダウン完了時に `[You may drink coffee now.]` が表示されます。
+1. 期間を渡すと新しいクールダウンが作成され、引数なしなら保存済みのタイマーを再開します。`2h`、`15m30s`、`0:45:00` のような単一指定に加えて、残り/総時間のペア (`3h/5h` など、スラッシュ前後に空白可) も使えます。
+2. `--run` はライブ表示を最後まで更新し続けるかどうかを決めます。付けなければ現在の状態を 1 回だけ表示して終了します。
+3. スタイル指定で ASCII レイアウトを切り替えられます。デフォルトは複数行 (`Remaining` / `Expires at` + バー)、`--one-line` は `HH:MM:SS ✕ ✕ ✕ …` 表記、`--graph-only` は時間表示なしのバーのみ。`--bar-style` でバーの文字を切り替えられます (デフォルトは `greek-cross`、以前のブロック表示は `blocks`)。どのモードでも指定できます。`--run` と併用した場合は同じ ASCII バーでライブ更新されます (ANSI で着色)。ANSI は TTY を見て自動判断し、`--color=always` で強制オン、`--color=never` で強制オフできます (ライブ/スナップショット共通)。スナップショット表示ではクールダウン完了時に `[You may drink coffee now.]` が表示されます。
 
 ```console
 decafe-timer 45m          # 新しいタイマーを始めてスナップショットを 1 回表示
+decafe-timer 3h/5h        # 3 時間残り / 5 時間のタイマーで開始
 decafe-timer              # 保存済みタイマーを再開し、スナップショットを 1 回表示
 decafe-timer --run 45m    # 新しいタイマーを始め、カウントダウンを表示し続ける
-decafe-timer --run        # 進行中のタイマーをリッチ UI で再開
-decafe-timer --run --one-line 10m  # リッチ UI の代わりに ASCII でライブ更新
+decafe-timer --run        # 進行中のタイマーをライブ表示で再開
+decafe-timer --run --one-line 10m  # ASCII 1 行表示でライブ更新
 decafe-timer --bar-style blocks   # 以前のブロック表示を使う
 decafe-timer --graph-only # ASCII バーのみのスナップショットを表示
+decafe-timer --color=always # TTY 以外でも ANSI を強制
 ```
 
 ## ライセンス
