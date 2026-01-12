@@ -23,16 +23,20 @@ EXPIRED_MESSAGES = [
     # やさしく励ましてくれる系
     "Your break is over -- enjoy your coffee, gently.",
     "You’ve waited well. Treat yourself to a warm cup.",
+    "Time’s up. A calm sip is yours.",
     # ふんわり癒し系
     "Your coffee time has arrived -- relax and enjoy.",
     "A warm cup is waiting for you.",
     "The timer’s done. Brew a moment of comfort.",
+    "Ease back in. Coffee is ready when you are.",
     # ちょっとユーモア系
     "Permission granted: caffeination may proceed.",
     "Coffee mode unlocked. Use wisely.",
+    "Alert: Bean protocol complete.",
     # 行動変容をそっと支援する系
     "If you choose to, a small cup won’t hurt now.",
     "Ready when you are. Keep listening to your body.",
+    "You did the wait. Now choose what feels right.",
 ]
 NO_ACTIVE_TIMER_MESSAGE = "No active timer."
 
