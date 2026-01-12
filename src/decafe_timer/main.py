@@ -8,14 +8,6 @@ from pathlib import Path
 from typing import Optional
 
 from appdirs import user_cache_dir
-from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    Progress,
-    ProgressColumn,
-    TextColumn,
-)
-from rich.text import Text
 
 from .__about__ import __version__
 
@@ -24,9 +16,6 @@ APP_AUTHOR = "tos-kamiya"
 
 CACHE_DIR = Path(user_cache_dir(APP_NAME, APP_AUTHOR))
 STATE_FILE = CACHE_DIR / "timer_state.json"
-
-COLORED_CONSOLE = Console(markup=False, highlight=False)
-PLAIN_CONSOLE = Console(color_system=None, markup=False, highlight=False)
 
 EXPIRED_MESSAGES = [
     "Cooldown expired! ☕ You may drink coffee now.",
@@ -47,18 +36,22 @@ EXPIRED_MESSAGES = [
 NO_ACTIVE_TIMER_MESSAGE = "No active timer."
 
 
-def _get_console(*, one_line: bool = False, graph_only: bool = False) -> Console:
-    return PLAIN_CONSOLE if (one_line or graph_only) else COLORED_CONSOLE
-
-
 BAR_CHAR_WIDTH = 20
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
 FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 BAR_STYLE_BLOCKS = "blocks"
-BAR_STYLE_BRAILLE = "braille"
+BAR_STYLE_GREEK_CROSS = "greek-cross"
 BAR_FILLED_CHAR = "\U0001d15b"  # black vertical rectangle
 BAR_EMPTY_CHAR = "\U0001d15a"  # white vertical rectangle
+# ANSI color helpers for live mode.
+ANSI_RESET = "\x1b[0m"
+ANSI_DIM = "\x1b[2m"
+ANSI_RED = "\x1b[31m"
+ANSI_YELLOW = "\x1b[33m"
+ANSI_GREEN = "\x1b[32m"
+ANSI_BLUE = "\x1b[34m"
 # Greek cross levels from THIN to EXTREMELY HEAVY (U+1F7A1..U+1F7A7).
 GREEK_CROSS_LEVELS = [
     "\U0001f7a1",
@@ -281,18 +274,17 @@ def start_timer(
     *,
     one_line=False,
     graph_only=False,
-    bar_style: str = BAR_STYLE_BRAILLE,
+    bar_style: str = BAR_STYLE_GREEK_CROSS,
 ):
-    console = _get_console(one_line=one_line, graph_only=graph_only)
     try:
         duration_sec = _duration_to_seconds(hours, minutes, seconds)
         finish_at, duration_sec = _schedule_timer_seconds(duration_sec, duration_sec)
     except ValueError as exc:
-        console.print(str(exc))
+        print(str(exc))
         return
 
     if not one_line and not graph_only:
-        console.print(
+        print(
             "Coffee cooldown started. "
             f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )
@@ -306,19 +298,18 @@ def start_timer(
 
 
 def run_timer_loop(
-    finish_at: datetime = None,
-    duration_sec: int = None,
+    finish_at: Optional[datetime] = None,
+    duration_sec: Optional[int] = None,
     *,
     one_line: bool = False,
     graph_only: bool = False,
-    bar_style: str = BAR_STYLE_BRAILLE,
+    bar_style: str = BAR_STYLE_GREEK_CROSS,
 ):
-    console = _get_console(one_line=one_line, graph_only=graph_only)
     # resume 用に state から読み直すケース
     if finish_at is None or duration_sec is None:
         state = load_state()
         if state is None:
-            console.print(NO_ACTIVE_TIMER_MESSAGE)
+            print(NO_ACTIVE_TIMER_MESSAGE)
             return
         finish_at, duration_sec = state
 
@@ -328,7 +319,7 @@ def run_timer_loop(
             save_last_finished(finish_at, duration_sec)
         except Exception:
             pass
-        console.print(_select_expired_message(finish_at, duration_sec))
+        print(_select_expired_message(finish_at, duration_sec))
         return
 
     if one_line or graph_only:
@@ -341,61 +332,55 @@ def run_timer_loop(
         return
 
     try:
-        _run_rich_loop(finish_at, duration_sec)
+        _run_ansi_loop(finish_at, duration_sec, bar_style=bar_style)
 
         try:
             save_last_finished(finish_at, duration_sec)
         except Exception:
             pass
-        console.print(_select_expired_message(finish_at, duration_sec))
+        print(_select_expired_message(finish_at, duration_sec))
 
     except KeyboardInterrupt:
-        console.print("\nInterrupted by user. Timer state saved.")
+        print("\nInterrupted by user. Timer state saved.")
 
 
-def _run_rich_loop(finish_at: datetime, duration_sec: int):
+def _run_ansi_loop(
+    finish_at: datetime,
+    duration_sec: int,
+    *,
+    bar_style: str = BAR_STYLE_GREEK_CROSS,
+):
     last_saved_minute = None
-    progress = Progress(
-        TextColumn("{task.fields[remaining]}"),
-        _GreekCrossBarColumn(bar_width=BAR_CHAR_WIDTH),
-        transient=True,
-        console=COLORED_CONSOLE,
-    )
+    last_line_len = 0
 
-    with progress:
-        task_id = progress.add_task(
-            "",
-            total=duration_sec,
-            remaining="--:--:--",
-        )
+    while True:
+        now = datetime.now()
+        remaining = finish_at - now
+        remaining_sec = int(remaining.total_seconds())
 
-        while True:
-            now = datetime.now()
-            remaining = finish_at - now
-            remaining_sec = int(remaining.total_seconds())
+        if remaining_sec <= 0:
+            break
 
-            if remaining_sec <= 0:
-                progress.update(
-                    task_id,
-                    completed=0,
-                    remaining="00:00:00",
-                )
-                break
+        remaining_str = _format_remaining(remaining_sec)
+        if duration_sec <= 0:
+            ratio = 0.0
+        else:
+            ratio = max(0.0, min(remaining_sec / duration_sec, 1.0))
+        bar = _render_bar_ansi(BAR_CHAR_WIDTH, ratio, bar_style)
+        line = f"{remaining_str} {bar}"
+        visible_len = _visible_length(line)
+        pad = max(last_line_len - visible_len, 0)
+        print(line + (" " * pad), end="\r", flush=True)
+        last_line_len = visible_len
 
-            completed = remaining_sec
-            remaining_str = _format_remaining(remaining_sec)
+        if last_saved_minute != now.minute:
+            save_state(finish_at, duration_sec)
+            last_saved_minute = now.minute
 
-            progress.update(
-                task_id,
-                completed=completed,
-                remaining=remaining_str,
-            )
+        time.sleep(1)
 
-            if last_saved_minute != now.minute:
-                save_state(finish_at, duration_sec)
-                last_saved_minute = now.minute
-
-            time.sleep(1)
+    if last_line_len:
+        print(" " * last_line_len, end="\r", flush=True)
 
 
 def _run_ascii_loop(
@@ -403,9 +388,8 @@ def _run_ascii_loop(
     duration_sec: int,
     *,
     graph_only: bool = False,
-    bar_style: str = BAR_STYLE_BRAILLE,
+    bar_style: str = BAR_STYLE_GREEK_CROSS,
 ):
-    console = _get_console(one_line=True, graph_only=graph_only)
     last_saved_minute = None
     last_line_len = 0
 
@@ -426,11 +410,9 @@ def _run_ascii_loop(
             )
             pad = max(last_line_len - len(line), 0)
             output = line + (" " * pad)
-            console.print(
+            print(
                 output,
                 end="\r",
-                markup=False,
-                highlight=False,
             )
             last_line_len = len(line)
 
@@ -441,19 +423,19 @@ def _run_ascii_loop(
             time.sleep(1)
 
     except KeyboardInterrupt:
-        console.print("\nInterrupted by user. Timer state saved.")
+        print("\nInterrupted by user. Timer state saved.")
         return
 
     # Clear the current line before printing the final message.
     if last_line_len:
-        console.print(" " * last_line_len, end="\r")
+        print(" " * last_line_len, end="\r")
 
     try:
         save_last_finished(finish_at, duration_sec)
     except Exception:
         pass
 
-    console.print(_select_expired_message(finish_at, duration_sec))
+    print(_select_expired_message(finish_at, duration_sec))
 
 
 def _print_snapshot_status(
@@ -462,16 +444,15 @@ def _print_snapshot_status(
     *,
     one_line: bool = False,
     graph_only: bool = False,
-    bar_style: str = BAR_STYLE_BRAILLE,
+    bar_style: str = BAR_STYLE_GREEK_CROSS,
 ):
-    console = _get_console(one_line=one_line, graph_only=graph_only)
     remaining_sec = int((finish_at - datetime.now()).total_seconds())
     if remaining_sec <= 0:
         try:
             save_last_finished(finish_at, duration_sec)
         except Exception:
             pass
-        console.print(_select_expired_message(finish_at, duration_sec))
+        print(_select_expired_message(finish_at, duration_sec))
         return
 
     if graph_only:
@@ -481,7 +462,7 @@ def _print_snapshot_status(
             graph_only=True,
             bar_style=bar_style,
         )
-        console.print(line, markup=False)
+        print(line)
         return
 
     if one_line:
@@ -491,7 +472,7 @@ def _print_snapshot_status(
             graph_only=False,
             bar_style=bar_style,
         )
-        console.print(line, markup=False)
+        print(line)
         return
 
     expires_at = finish_at.strftime("%Y-%m-%d %H:%M:%S")
@@ -502,9 +483,9 @@ def _print_snapshot_status(
         graph_only=True,
         bar_style=bar_style,
     )
-    console.print(f"Remaining: {remaining_str}")
-    console.print(f"Expires at: {expires_at}")
-    console.print(bar_line, markup=False)
+    print(f"Remaining: {remaining_str}")
+    print(f"Expires at: {expires_at}")
+    print(bar_line)
 
 
 def _format_remaining(remaining_sec: int) -> str:
@@ -519,7 +500,7 @@ def _render_one_line(
     duration_sec: int,
     *,
     graph_only: bool = False,
-    bar_style: str = BAR_STYLE_BRAILLE,
+    bar_style: str = BAR_STYLE_GREEK_CROSS,
 ) -> str:
     remaining_str = _format_remaining(max(remaining_sec, 0))
     segments = BAR_CHAR_WIDTH
@@ -547,13 +528,9 @@ def _render_filled_bar(segments: int, ratio: float, bar_style: str) -> str:
         empty_segments = segments - filled_segments
         return (BAR_FILLED_CHAR * filled_segments) + (BAR_EMPTY_CHAR * empty_segments)
 
-    units_per_block = len(GREEK_CROSS_LEVELS) - 1
-    total_units = segments * units_per_block
-    filled_units = int(ratio * total_units + 0.5)
-    filled_units = max(0, min(filled_units, total_units))
-    full_blocks = filled_units // units_per_block
-    remainder = filled_units % units_per_block
-    empty_blocks = segments - full_blocks - (1 if remainder else 0)
+    full_blocks, remainder, empty_blocks = _compute_greek_cross_segments(
+        segments, ratio
+    )
     bar = GREEK_CROSS_FULL_CHAR * full_blocks
     if remainder:
         bar += GREEK_CROSS_LEVELS[remainder]
@@ -562,12 +539,7 @@ def _render_filled_bar(segments: int, ratio: float, bar_style: str) -> str:
     return bar
 
 
-def _render_greek_cross_bar_text(
-    segments: int,
-    ratio: float,
-    complete_style: str,
-    empty_style: str,
-) -> Text:
+def _compute_greek_cross_segments(segments: int, ratio: float):
     ratio = max(0.0, min(ratio, 1.0))
     units_per_block = len(GREEK_CROSS_LEVELS) - 1
     total_units = segments * units_per_block
@@ -576,67 +548,86 @@ def _render_greek_cross_bar_text(
     full_blocks = filled_units // units_per_block
     remainder = filled_units % units_per_block
     empty_blocks = segments - full_blocks - (1 if remainder else 0)
+    return full_blocks, remainder, empty_blocks
 
-    text = Text()
+
+def _bar_color_for_ratio(ratio: float) -> str:
+    if ratio >= 0.3:
+        return ANSI_RED
+    if ratio >= 0.15:
+        return ANSI_YELLOW
+    if ratio >= 0.07:
+        return ANSI_GREEN
+    return ANSI_BLUE
+
+
+def _render_greek_cross_bar_ansi(segments: int, ratio: float) -> str:
+    full_blocks, remainder, empty_blocks = _compute_greek_cross_segments(
+        segments, ratio
+    )
+    filled_style = _bar_color_for_ratio(ratio)
     pieces = []
-    pieces.extend([(GREEK_CROSS_FULL_CHAR, complete_style)] * full_blocks)
+    pieces.extend([(GREEK_CROSS_FULL_CHAR, filled_style)] * full_blocks)
     if remainder:
-        pieces.append((GREEK_CROSS_LEVELS[remainder], complete_style))
-    pieces.extend([(GREEK_CROSS_EMPTY_CHAR, empty_style)] * empty_blocks)
+        pieces.append((GREEK_CROSS_LEVELS[remainder], filled_style))
+    pieces.extend([(GREEK_CROSS_EMPTY_CHAR, ANSI_DIM)] * empty_blocks)
+    return _render_ansi_spaced(pieces)
 
+
+def _render_blocks_bar_ansi(segments: int, ratio: float) -> str:
+    ratio = max(0.0, min(ratio, 1.0))
+    filled_segments = int(ratio * segments + 0.5)
+    filled_segments = max(0, min(filled_segments, segments))
+    empty_segments = segments - filled_segments
+    color = _bar_color_for_ratio(ratio)
+    return (
+        f"{ANSI_RESET}{color}"
+        + (BAR_FILLED_CHAR * filled_segments)
+        + f"{ANSI_RESET}{ANSI_DIM}"
+        + (BAR_EMPTY_CHAR * empty_segments)
+        + ANSI_RESET
+    )
+
+
+def _render_bar_ansi(segments: int, ratio: float, bar_style: str) -> str:
+    if bar_style == BAR_STYLE_BLOCKS:
+        return _render_blocks_bar_ansi(segments, ratio)
+    return _render_greek_cross_bar_ansi(segments, ratio)
+
+
+def _render_ansi_spaced(pieces):
+    output = []
+    current_style = None
     for index, (char, style) in enumerate(pieces):
         if index:
-            text.append(" ")
-        text.append(char, style=style)
-    return text
+            output.append(" ")
+        if style != current_style:
+            output.append(ANSI_RESET)
+            if style:
+                output.append(style)
+            current_style = style
+        output.append(char)
+    if current_style is not None:
+        output.append(ANSI_RESET)
+    return "".join(output)
 
 
-class _GreekCrossBarColumn(ProgressColumn):
-    def __init__(
-        self,
-        *,
-        bar_width: int,
-        complete_style: str = "progress.bar",
-        empty_style: str = "dim",
-    ):
-        super().__init__()
-        self.bar_width = bar_width
-        self.complete_style = complete_style
-        self.empty_style = empty_style
+def _visible_length(text: str) -> int:
+    return len(ANSI_ESCAPE_PATTERN.sub("", text))
 
-    def render(self, task) -> Text:
-        if not task.total:
-            ratio = 0.0
-        else:
-            ratio = task.completed / task.total
-        if ratio >= 0.3:
-            complete_style = "red"
-        elif ratio >= 0.15:
-            complete_style = "yellow"
-        elif ratio >= 0.07:
-            complete_style = "green"
-        else:
-            complete_style = "blue"
-        return _render_greek_cross_bar_text(
-            self.bar_width,
-            ratio,
-            complete_style,
-            self.empty_style,
-        )
-
-
-def resume_timer(*, one_line=False, graph_only=False, bar_style: str = BAR_STYLE_BRAILLE):
-    console = _get_console(one_line=one_line, graph_only=graph_only)
+def resume_timer(
+    *, one_line=False, graph_only=False, bar_style: str = BAR_STYLE_GREEK_CROSS
+):
     state = load_state()
     if state is None:
         last_finished = load_last_finished()
         if last_finished is not None:
-            console.print(_select_expired_message(*last_finished))
+            print(_select_expired_message(*last_finished))
         else:
             if one_line or graph_only:
-                console.print(_select_expired_message(None, None))
+                print(_select_expired_message(None, None))
             else:
-                console.print(NO_ACTIVE_TIMER_MESSAGE)
+                print(NO_ACTIVE_TIMER_MESSAGE)
         return
 
     finish_at, duration_sec = state
@@ -645,10 +636,10 @@ def resume_timer(*, one_line=False, graph_only=False, bar_style: str = BAR_STYLE
             save_last_finished(finish_at, duration_sec)
         except Exception:
             pass
-        console.print(_select_expired_message(finish_at, duration_sec))
+        print(_select_expired_message(finish_at, duration_sec))
         return
     if not one_line and not graph_only:
-        console.print(
+        print(
             f"Resuming cooldown. Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
         )
     run_timer_loop(
@@ -691,7 +682,7 @@ def main(argv=None):
 def _parse_args(argv=None):
     import argparse
 
-    parser = argparse.ArgumentParser(description="Coffee cooldown timer (rich version)")
+    parser = argparse.ArgumentParser(description="Coffee cooldown timer")
     parser.add_argument(
         "duration",
         nargs="?",
@@ -723,15 +714,14 @@ def _parse_args(argv=None):
     )
     parser.add_argument(
         "--bar-style",
-        choices=(BAR_STYLE_BRAILLE, BAR_STYLE_BLOCKS),
-        default=BAR_STYLE_BRAILLE,
-        help="Pick the ASCII bar style (default: braille).",
+        choices=(BAR_STYLE_GREEK_CROSS, BAR_STYLE_BLOCKS),
+        default=BAR_STYLE_GREEK_CROSS,
+        help="Pick the ASCII bar style (default: greek-cross).",
     )
     return parser.parse_args(argv)
 
 
 def _resolve_timer_state(args):
-    console = _get_console(one_line=args.one_line, graph_only=args.graph_only)
     finish_at = None
     duration_sec = None
     new_timer_started = False
@@ -741,28 +731,28 @@ def _resolve_timer_state(args):
             remaining_sec, total_sec = parse_duration(args.duration)
         except ValueError as exc:
             message = str(exc) if str(exc) else INVALID_DURATION_MESSAGE
-            console.print(message)
+            print(message)
             return None
         try:
             finish_at, duration_sec = _schedule_timer_seconds(remaining_sec, total_sec)
         except ValueError as exc:
-            console.print(str(exc))
+            print(str(exc))
             return None
         new_timer_started = True
     else:
         state = load_state()
         if state is None:
             if args.run:
-                console.print(NO_ACTIVE_TIMER_MESSAGE)
+                print(NO_ACTIVE_TIMER_MESSAGE)
             else:
                 last_finished = load_last_finished()
                 if last_finished is not None:
-                    console.print(_select_expired_message(*last_finished))
+                    print(_select_expired_message(*last_finished))
                 else:
                     if args.one_line or args.graph_only:
-                        console.print(_select_expired_message(None, None))
+                        print(_select_expired_message(None, None))
                     else:
-                        console.print(NO_ACTIVE_TIMER_MESSAGE)
+                        print(NO_ACTIVE_TIMER_MESSAGE)
             return None
         finish_at, duration_sec = state
 
@@ -770,18 +760,14 @@ def _resolve_timer_state(args):
 
 
 def _run_live_mode(args, finish_at, duration_sec, new_timer_started):
-    console = _get_console(
-        one_line=args.one_line,
-        graph_only=args.graph_only,
-    )
     if finish_at > datetime.now():
         if new_timer_started:
-            console.print(
+            print(
                 "Coffee cooldown started. "
                 f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
             )
         else:
-            console.print(
+            print(
                 "Resuming cooldown. "
                 f"Expires at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
             )

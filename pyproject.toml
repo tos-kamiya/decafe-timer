@@ -23,7 +23,6 @@ classifiers = [
 ]
 dependencies = [
     "appdirs",
-    "rich",
 ]
 
 [project.urls]
