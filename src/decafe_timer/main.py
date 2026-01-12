@@ -12,8 +12,10 @@ from rich.console import Console
 from rich.progress import (
     BarColumn,
     Progress,
+    ProgressColumn,
     TextColumn,
 )
+from rich.text import Text
 
 from .__about__ import __version__
 
@@ -49,7 +51,7 @@ def _get_console(*, one_line: bool = False, graph_only: bool = False) -> Console
     return PLAIN_CONSOLE if (one_line or graph_only) else COLORED_CONSOLE
 
 
-ONE_LINE_BAR_WIDTH = 20
+BAR_CHAR_WIDTH = 20
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
 FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
 
@@ -57,19 +59,18 @@ BAR_STYLE_BLOCKS = "blocks"
 BAR_STYLE_BRAILLE = "braille"
 BAR_FILLED_CHAR = "\U0001d15b"  # black vertical rectangle
 BAR_EMPTY_CHAR = "\U0001d15a"  # white vertical rectangle
-BRAILLE_FULL_CHAR = "\u2588"  # full block
-# Braille levels use rows 1-3 so shrinking removes dots right-to-left,
-# top-to-bottom.
-BRAILLE_ROW123_LEVELS = [
-    "\u2800",
-    "\u2804",
-    "\u2806",
-    "\u2807",
-    "\u2827",
-    "\u2837",
-    "\u283f",
+# Greek cross levels from THIN to EXTREMELY HEAVY (U+1F7A1..U+1F7A7).
+GREEK_CROSS_LEVELS = [
+    "\U0001f7a1",
+    "\U0001f7a2",
+    "\U0001f7a3",
+    "\U0001f7a4",
+    "\U0001f7a5",
+    "\U0001f7a6",
+    "\U0001f7a7",
 ]
-BRAILLE_EMPTY_CHAR = "\u2591"
+GREEK_CROSS_EMPTY_CHAR = GREEK_CROSS_LEVELS[0]
+GREEK_CROSS_FULL_CHAR = GREEK_CROSS_LEVELS[-1]
 
 INVALID_DURATION_MESSAGE = (
     "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS. "
@@ -356,7 +357,7 @@ def _run_rich_loop(finish_at: datetime, duration_sec: int):
     last_saved_minute = None
     progress = Progress(
         TextColumn("{task.fields[remaining]}"),
-        BarColumn(bar_width=60),
+        _GreekCrossBarColumn(bar_width=BAR_CHAR_WIDTH),
         transient=True,
         console=COLORED_CONSOLE,
     )
@@ -521,7 +522,7 @@ def _render_one_line(
     bar_style: str = BAR_STYLE_BRAILLE,
 ) -> str:
     remaining_str = _format_remaining(max(remaining_sec, 0))
-    segments = ONE_LINE_BAR_WIDTH
+    segments = BAR_CHAR_WIDTH
     if duration_sec <= 0:
         bar = _render_empty_bar(segments, bar_style)
     else:
@@ -535,7 +536,7 @@ def _render_one_line(
 def _render_empty_bar(segments: int, bar_style: str) -> str:
     if bar_style == BAR_STYLE_BLOCKS:
         return BAR_EMPTY_CHAR * segments
-    return BRAILLE_EMPTY_CHAR * segments
+    return GREEK_CROSS_EMPTY_CHAR * segments
 
 
 def _render_filled_bar(segments: int, ratio: float, bar_style: str) -> str:
@@ -546,30 +547,82 @@ def _render_filled_bar(segments: int, ratio: float, bar_style: str) -> str:
         empty_segments = segments - filled_segments
         return (BAR_FILLED_CHAR * filled_segments) + (BAR_EMPTY_CHAR * empty_segments)
 
-    units_per_block = 10
+    units_per_block = len(GREEK_CROSS_LEVELS) - 1
     total_units = segments * units_per_block
     filled_units = int(ratio * total_units + 0.5)
     filled_units = max(0, min(filled_units, total_units))
     full_blocks = filled_units // units_per_block
     remainder = filled_units % units_per_block
     empty_blocks = segments - full_blocks - (1 if remainder else 0)
-    bar = BRAILLE_FULL_CHAR * full_blocks
+    bar = GREEK_CROSS_FULL_CHAR * full_blocks
     if remainder:
-        left_units = min(remainder, 6)
-        right_units = max(0, remainder - 6)
-        bar += _braille_row123_level(left_units, max_units=6)
-        bar += _braille_row123_level(right_units, max_units=6)
+        bar += GREEK_CROSS_LEVELS[remainder]
     if empty_blocks > 0:
-        bar += BRAILLE_EMPTY_CHAR * empty_blocks
+        bar += GREEK_CROSS_EMPTY_CHAR * empty_blocks
     return bar
 
 
-def _braille_row123_level(units: int, *, max_units: int) -> str:
-    if max_units <= 0:
-        return BRAILLE_ROW123_LEVELS[0]
-    clamped = max(0, min(units, max_units))
-    level = int(round(clamped / max_units * (len(BRAILLE_ROW123_LEVELS) - 1)))
-    return BRAILLE_ROW123_LEVELS[level]
+def _render_greek_cross_bar_text(
+    segments: int,
+    ratio: float,
+    complete_style: str,
+    empty_style: str,
+) -> Text:
+    ratio = max(0.0, min(ratio, 1.0))
+    units_per_block = len(GREEK_CROSS_LEVELS) - 1
+    total_units = segments * units_per_block
+    filled_units = int(ratio * total_units + 0.5)
+    filled_units = max(0, min(filled_units, total_units))
+    full_blocks = filled_units // units_per_block
+    remainder = filled_units % units_per_block
+    empty_blocks = segments - full_blocks - (1 if remainder else 0)
+
+    text = Text()
+    pieces = []
+    pieces.extend([(GREEK_CROSS_FULL_CHAR, complete_style)] * full_blocks)
+    if remainder:
+        pieces.append((GREEK_CROSS_LEVELS[remainder], complete_style))
+    pieces.extend([(GREEK_CROSS_EMPTY_CHAR, empty_style)] * empty_blocks)
+
+    for index, (char, style) in enumerate(pieces):
+        if index:
+            text.append(" ")
+        text.append(char, style=style)
+    return text
+
+
+class _GreekCrossBarColumn(ProgressColumn):
+    def __init__(
+        self,
+        *,
+        bar_width: int,
+        complete_style: str = "progress.bar",
+        empty_style: str = "dim",
+    ):
+        super().__init__()
+        self.bar_width = bar_width
+        self.complete_style = complete_style
+        self.empty_style = empty_style
+
+    def render(self, task) -> Text:
+        if not task.total:
+            ratio = 0.0
+        else:
+            ratio = task.completed / task.total
+        if ratio >= 0.3:
+            complete_style = "red"
+        elif ratio >= 0.15:
+            complete_style = "yellow"
+        elif ratio >= 0.07:
+            complete_style = "green"
+        else:
+            complete_style = "blue"
+        return _render_greek_cross_bar_text(
+            self.bar_width,
+            ratio,
+            complete_style,
+            self.empty_style,
+        )
 
 
 def resume_timer(*, one_line=False, graph_only=False, bar_style: str = BAR_STYLE_BRAILLE):
