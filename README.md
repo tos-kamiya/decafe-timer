@@ -16,25 +16,19 @@ pipx install decafe-timer
 
 ## Usage
 
-The CLI revolves around three ideas:
+The CLI follows a simple story:
 
-1. Passing a duration creates a new cooldown; omitting it resumes whatever is already running. You can use single durations (`2h`, `15m30s`, `0:45:00`) or a remaining/total pair like `3h/5h` (spaces around `/` are allowed, and mixed formats like `3h/4:50:00` work too).
-2. `--run` decides whether to keep the live UI updating until the cooldown expires. Without `--run`, the command prints the current status once and exits.
-3. Style flags pick the ASCII layout and ANSI behavior.
-   - Layout output:
-     - Default is multi-line (`Remaining` / `Expires at` + bar).
-     - `--one-line` uses `HH:MM:SS ✕ ✕ ✕ …`.
-     - `--graph-only` prints just the bar.
-   - Bar characters:
-     - `--bar-style` swaps the bar characters (`greek-cross` default, `counting-rod`, or `blocks` for the previous look).
-   - ANSI output:
-     - ANSI is auto-enabled on TTYs.
-     - `--color=always` forces ANSI on; `--color=never` forces it off (applies to both live and snapshot output).
-   - Live updates:
-     - When paired with `--run`, the live updates use the same ASCII bar (colored via ANSI).
-   - Snapshot finish:
-     - Snapshots print `[You may drink coffee now.]` once the timer finishes.
-4. `clear` removes the stored timer so idle displays show `---`.
+1. Provide a duration to set a timer. You can use single durations (`2h`, `15m30s`, `0:45:00`) or a remaining/total pair like `3h/5h` (spaces around `/` are allowed, and mixed formats like `3h/4:50:00` work too).
+2. Once the timer expires, snapshots show `[You may drink coffee now.]`.
+3. `clear` removes the stored timer so idle displays show `---`.
+4. `--run` keeps the display updating until the cooldown expires; without it, a snapshot is printed once.
+5. Style flags customize the ASCII layout.
+   - `--one-line` uses `HH:MM:SS ✕ ✕ ✕ …`.
+   - `--graph-only` prints just the bar.
+   - `--bar-style` swaps the bar characters (`greek-cross` default, `counting-rod`, or `blocks` for the previous look).
+6. Color output is controlled separately.
+   - ANSI is auto-enabled on TTYs.
+   - `--color=always` forces ANSI on; `--color=never` forces it off (applies to both live and snapshot output).
 
 ```console
 decafe-timer 45m          # start a new timer, print one snapshot
