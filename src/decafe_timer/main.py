@@ -8,15 +8,21 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from appdirs import user_cache_dir
-
-from .__about__ import __version__
+from .cli import CliRequest, normalize_cli_request, parse_cli_args
+from .duration import INVALID_DURATION_MESSAGE, duration_to_seconds, parse_duration
 
 APP_NAME = "coffee_timer"
 APP_AUTHOR = "tos-kamiya"
 
-CACHE_DIR = Path(user_cache_dir(APP_NAME, APP_AUTHOR))
-STATE_FILE = CACHE_DIR / "timer_state.json"
+
+def _cache_dir() -> Path:
+    from appdirs import user_cache_dir
+
+    return Path(user_cache_dir(APP_NAME, APP_AUTHOR))
+
+
+def _state_file() -> Path:
+    return _cache_dir() / "timer_state.json"
 
 EXPIRED_MESSAGES = [
     "Cooldown expired! ☕ You may drink coffee now.",
@@ -44,8 +50,6 @@ BROKEN_STATE_MESSAGE = "State file is invalid; ignoring it."
 
 BAR_CHAR_WIDTH = 20
 BAR_CHAR_WIDTH_BLOCKS = BAR_CHAR_WIDTH * 2
-DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
-FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 BAR_STYLE_BLOCKS = "blocks"
@@ -83,10 +87,6 @@ COUNTING_ROD_LEVELS = [
 COUNTING_ROD_EMPTY_CHAR = COUNTING_ROD_LEVELS[0]
 COUNTING_ROD_FULL_CHAR = COUNTING_ROD_LEVELS[-1]
 
-INVALID_DURATION_MESSAGE = (
-    "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS. "
-    "You can also use remaining/total like 3h/5h."
-)
 
 
 def _ansi_table(enabled: bool) -> dict[str, str]:
@@ -132,7 +132,7 @@ def _schedule_timer_seconds(remaining_sec: int, total_sec: int):
 
 def _schedule_timer(hours: int, minutes: int, seconds: int):
     """Create a new timer, persist it, and return (finish_at, duration_sec)."""
-    duration_sec = _duration_to_seconds(hours, minutes, seconds)
+    duration_sec = duration_to_seconds(hours, minutes, seconds)
     return _schedule_timer_seconds(duration_sec, duration_sec)
 
 
@@ -151,10 +151,11 @@ def _warn_broken_state():
 
 
 def _read_state_payload():
-    if not STATE_FILE.exists():
+    state_file = _state_file()
+    if not state_file.exists():
         return {}
     try:
-        text = STATE_FILE.read_text()
+        text = state_file.read_text()
     except OSError:
         _warn_broken_state()
         return {}
@@ -170,10 +171,11 @@ def _read_state_payload():
 
 
 def _write_state_payload(payload: dict):
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    tmp_path = STATE_FILE.with_name(f"{STATE_FILE.name}.tmp")
+    state_file = _state_file()
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = state_file.with_name(f"{state_file.name}.tmp")
     tmp_path.write_text(json.dumps(payload))
-    tmp_path.replace(STATE_FILE)
+    tmp_path.replace(state_file)
 
 
 def save_state(finish_at: datetime, duration_sec: int):
@@ -239,9 +241,10 @@ def clear_state():
     if isinstance(last_finished, dict):
         _write_state_payload({"last_finished": last_finished})
         return
-    if STATE_FILE.exists():
+    state_file = _state_file()
+    if state_file.exists():
         try:
-            STATE_FILE.unlink()
+            state_file.unlink()
         except OSError:
             pass
 
@@ -249,99 +252,6 @@ def clear_state():
 # ------------------------------
 # タイマー本体
 # ------------------------------
-def _parse_single_duration(duration_str: str):
-    """Parse duration from HH:MM:SS or AhBmCs style into (h, m, s)."""
-    duration_str = duration_str.strip()
-    if not duration_str:
-        raise ValueError
-
-    if ":" in duration_str:
-        parts = duration_str.split(":")
-        if len(parts) != 3:
-            raise ValueError
-        try:
-            h, m, s = map(int, parts)
-        except ValueError as exc:
-            raise ValueError from exc
-        if any(value < 0 for value in (h, m, s)):
-            raise ValueError
-        if h == m == s == 0:
-            raise ValueError
-        return h, m, s
-
-    normalized = duration_str.replace(" ", "").lower()
-    if not normalized:
-        raise ValueError
-
-    pos = 0
-    hours = minutes = seconds = 0
-    for match in DURATION_PATTERN.finditer(normalized):
-        if match.start() != pos:
-            raise ValueError
-        value = int(match.group(1))
-        unit = match.group(2).lower()
-        if unit == "h":
-            hours += value
-        elif unit == "m":
-            minutes += value
-        elif unit == "s":
-            seconds += value
-        pos = match.end()
-
-    if pos != len(normalized):
-        raise ValueError
-
-    if hours == minutes == seconds == 0:
-        raise ValueError
-
-    return hours, minutes, seconds
-
-
-def _duration_to_seconds(hours: int, minutes: int, seconds: int) -> int:
-    return int(timedelta(hours=hours, minutes=minutes, seconds=seconds).total_seconds())
-
-
-def parse_duration(duration_str: str):
-    """Parse duration; support remaining/total with a slash or a single duration.
-
-    Returns (remaining_seconds, total_seconds).
-    """
-    duration_str = duration_str.strip()
-    if not duration_str:
-        raise ValueError(INVALID_DURATION_MESSAGE)
-
-    fraction_parts = FRACTION_SPLIT_PATTERN.split(duration_str, maxsplit=1)
-    if len(fraction_parts) == 2:
-        remaining_raw, total_raw = fraction_parts
-        try:
-            rh, rm, rs = _parse_single_duration(remaining_raw)
-            th, tm, ts = _parse_single_duration(total_raw)
-        except ValueError:
-            raise ValueError(INVALID_DURATION_MESSAGE)
-
-        remaining_sec = _duration_to_seconds(rh, rm, rs)
-        total_sec = _duration_to_seconds(th, tm, ts)
-
-        if remaining_sec <= 0 or total_sec <= 0:
-            raise ValueError(
-                "Duration must be positive (parsed as remaining/total like 3h/5h)."
-            )
-        if remaining_sec > total_sec:
-            raise ValueError(
-                "Remaining duration cannot exceed total duration "
-                "(parsed as remaining/total like 3h/5h)."
-            )
-
-        return remaining_sec, total_sec
-
-    try:
-        h, m, s = _parse_single_duration(duration_str)
-    except ValueError:
-        raise ValueError(INVALID_DURATION_MESSAGE)
-    single_sec = _duration_to_seconds(h, m, s)
-    return single_sec, single_sec
-
-
 def start_timer(
     hours=0,
     minutes=0,
@@ -352,7 +262,7 @@ def start_timer(
     bar_style: str = BAR_STYLE_GREEK_CROSS,
 ):
     try:
-        duration_sec = _duration_to_seconds(hours, minutes, seconds)
+        duration_sec = duration_to_seconds(hours, minutes, seconds)
         finish_at, duration_sec = _schedule_timer_seconds(duration_sec, duration_sec)
     except ValueError as exc:
         print(str(exc))
@@ -701,8 +611,13 @@ def resume_timer(
 # エントリポイント
 # ------------------------------
 def main(argv=None):
-    args = _parse_args(argv)
-    resolved = _resolve_timer_state(args)
+    args = parse_cli_args(argv)
+    request, error = normalize_cli_request(args)
+    if error:
+        print(error)
+        return
+    args.run = request.run
+    resolved = _resolve_timer_state(args, request)
     if resolved is None:
         return
     finish_at, duration_sec, new_timer_started = resolved
@@ -725,104 +640,19 @@ def main(argv=None):
         use_ansi=_should_use_ansi(args),
     )
 
-
-def _parse_args(argv=None):
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Coffee cooldown timer")
-    parser.add_argument(
-        "duration",
-        nargs="*",
-        metavar="ARG",
-        help=(
-            "Set a new timer (e.g. 2h, 15m30s, 0:25:00, or remaining/total like 3h/5h). "
-            "Omit to resume. Use 'run' to keep updating continuously, and use "
-            "'clear', --clear, or 0 to remove the current timer."
-        ),
-    )
-    parser.add_argument(
-        "--clear",
-        action="store_true",
-        help="Alias for the clear command.",
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"%(prog)s {__version__}",
-    )
-    parser.add_argument(
-        "--one-line",
-        action="store_true",
-        help="Use the single-line ASCII format (time + bar).",
-    )
-    parser.add_argument(
-        "--graph-only",
-        action="store_true",
-        help="Show only the ASCII bar (no time).",
-    )
-    parser.add_argument(
-        "--run",
-        action="store_true",
-        help="Alias for the run command (keep updating continuously).",
-    )
-    parser.add_argument(
-        "--bar-style",
-        choices=(
-            BAR_STYLE_GREEK_CROSS,
-            BAR_STYLE_COUNTING_ROD,
-            BAR_STYLE_BLOCKS,
-        ),
-        default=BAR_STYLE_GREEK_CROSS,
-        help="Pick the ASCII bar style (default: greek-cross).",
-    )
-    parser.add_argument(
-        "--color",
-        choices=("auto", "always", "never"),
-        default="auto",
-        help="Control ANSI colors (auto, always, never).",
-    )
-    return parser.parse_args(argv)
-
-
-def _resolve_timer_state(args):
+def _resolve_timer_state(args, request: CliRequest):
     finish_at = None
     duration_sec = None
     new_timer_started = False
 
-    tokens = list(args.duration or [])
-
-    if args.clear:
-        if tokens:
-            print("Cannot combine --clear with other arguments.")
-            return None
+    if request.clear:
         clear_state()
         print(NO_ACTIVE_TIMER_MESSAGE)
         return None
 
-    if tokens:
-        first = tokens[0].strip().lower()
-        if first == "run":
-            args.run = True
-            tokens = tokens[1:]
-
-    if tokens:
-        first = tokens[0].strip().lower()
-        if first == "clear":
-            if len(tokens) > 1:
-                print("clear does not accept a duration.")
-                return None
-            clear_state()
-            print(NO_ACTIVE_TIMER_MESSAGE)
-            return None
-        if first == "0" and len(tokens) == 1:
-            clear_state()
-            print(NO_ACTIVE_TIMER_MESSAGE)
-            return None
-
-    if tokens:
-        duration_value = " ".join(tokens)
+    if request.duration:
         try:
-            remaining_sec, total_sec = parse_duration(duration_value)
+            remaining_sec, total_sec = parse_duration(request.duration)
         except ValueError as exc:
             message = str(exc) if str(exc) else INVALID_DURATION_MESSAGE
             print(message)

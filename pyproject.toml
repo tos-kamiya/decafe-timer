@@ -25,6 +25,11 @@ dependencies = [
     "appdirs",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
 [project.urls]
 Issues = "https://github.com/tos-kamiya/decafe-timer/issues"
 Source = "https://github.com/tos-kamiya/decafe-timer"
@@ -50,6 +55,9 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
 
 [project.scripts]
 decafe-timer = "decafe_timer:main"
