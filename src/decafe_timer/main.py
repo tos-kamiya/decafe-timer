@@ -732,12 +732,18 @@ def _parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Coffee cooldown timer")
     parser.add_argument(
         "duration",
-        nargs="?",
-        metavar="DURATION",
+        nargs="*",
+        metavar="ARG",
         help=(
             "Set a new timer (e.g. 2h, 15m30s, 0:25:00, or remaining/total like 3h/5h). "
-            "Omit to resume. Use 'clear' to remove the current timer."
+            "Omit to resume. Use 'run' to keep updating continuously, and use "
+            "'clear', --clear, or 0 to remove the current timer."
         ),
+    )
+    parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Alias for the clear command.",
     )
     parser.add_argument(
         "--version",
@@ -757,7 +763,7 @@ def _parse_args(argv=None):
     parser.add_argument(
         "--run",
         action="store_true",
-        help="Keep updating continuously until the timer expires.",
+        help="Alias for the run command (keep updating continuously).",
     )
     parser.add_argument(
         "--bar-style",
@@ -783,13 +789,40 @@ def _resolve_timer_state(args):
     duration_sec = None
     new_timer_started = False
 
-    if args.duration:
-        if args.duration.strip().lower() == "clear":
+    tokens = list(args.duration or [])
+
+    if args.clear:
+        if tokens:
+            print("Cannot combine --clear with other arguments.")
+            return None
+        clear_state()
+        print(NO_ACTIVE_TIMER_MESSAGE)
+        return None
+
+    if tokens:
+        first = tokens[0].strip().lower()
+        if first == "run":
+            args.run = True
+            tokens = tokens[1:]
+
+    if tokens:
+        first = tokens[0].strip().lower()
+        if first == "clear":
+            if len(tokens) > 1:
+                print("clear does not accept a duration.")
+                return None
             clear_state()
             print(NO_ACTIVE_TIMER_MESSAGE)
             return None
+        if first == "0" and len(tokens) == 1:
+            clear_state()
+            print(NO_ACTIVE_TIMER_MESSAGE)
+            return None
+
+    if tokens:
+        duration_value = " ".join(tokens)
         try:
-            remaining_sec, total_sec = parse_duration(args.duration)
+            remaining_sec, total_sec = parse_duration(duration_value)
         except ValueError as exc:
             message = str(exc) if str(exc) else INVALID_DURATION_MESSAGE
             print(message)
