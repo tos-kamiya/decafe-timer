@@ -34,6 +34,7 @@ The CLI revolves around three ideas:
      - When paired with `--run`, the live updates use the same ASCII bar (colored via ANSI).
    - Snapshot finish:
      - Snapshots print `[You may drink coffee now.]` once the timer finishes.
+4. `clear` removes the stored timer so idle displays show `---`.
 
 ```console
 decafe-timer 45m          # start a new timer, print one snapshot
@@ -45,6 +46,7 @@ decafe-timer --run --one-line 10m  # live ASCII updates on one line
 decafe-timer --bar-style blocks   # use the classic block bar
 decafe-timer --bar-style counting-rod  # use the counting rod bar
 decafe-timer --graph-only # snapshot with the ASCII bar only
+decafe-timer clear        # clear the current timer (shows ---)
 decafe-timer --version    # show the current version
 ```
 

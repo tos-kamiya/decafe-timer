@@ -38,7 +38,7 @@ EXPIRED_MESSAGES = [
     "Ready when you are. Keep listening to your body.",
     "You did the wait. Now choose what feels right.",
 ]
-NO_ACTIVE_TIMER_MESSAGE = "No active timer."
+NO_ACTIVE_TIMER_MESSAGE = "---"
 BROKEN_STATE_MESSAGE = "State file is invalid; ignoring it."
 
 
@@ -208,11 +208,10 @@ def load_state():
 
 def save_last_finished(finish_at: datetime, duration_sec: int):
     """直近に終了したタイマーの情報だけを保持"""
-    payload = {
-        "last_finished": {
-            "finish_at": finish_at.isoformat(),
-            "duration_sec": int(duration_sec),
-        }
+    payload = _read_state_payload()
+    payload["last_finished"] = {
+        "finish_at": finish_at.isoformat(),
+        "duration_sec": int(duration_sec),
     }
     _write_state_payload(payload)
 
@@ -232,6 +231,19 @@ def load_last_finished():
     except Exception:
         return None
     return finish_at, duration_sec
+
+
+def clear_state():
+    payload = _read_state_payload()
+    last_finished = payload.get("last_finished")
+    if isinstance(last_finished, dict):
+        _write_state_payload({"last_finished": last_finished})
+        return
+    if STATE_FILE.exists():
+        try:
+            STATE_FILE.unlink()
+        except OSError:
+            pass
 
 
 # ------------------------------
@@ -661,14 +673,7 @@ def resume_timer(
 ):
     state = load_state()
     if state is None:
-        last_finished = load_last_finished()
-        if last_finished is not None:
-            print(_select_expired_message(*last_finished))
-        else:
-            if one_line or graph_only:
-                print(_select_expired_message(None, None))
-            else:
-                print(NO_ACTIVE_TIMER_MESSAGE)
+        print(NO_ACTIVE_TIMER_MESSAGE)
         return
 
     finish_at, duration_sec = state
@@ -731,7 +736,7 @@ def _parse_args(argv=None):
         metavar="DURATION",
         help=(
             "Set a new timer (e.g. 2h, 15m30s, 0:25:00, or remaining/total like 3h/5h). "
-            "Omit to resume."
+            "Omit to resume. Use 'clear' to remove the current timer."
         ),
     )
     parser.add_argument(
@@ -779,6 +784,10 @@ def _resolve_timer_state(args):
     new_timer_started = False
 
     if args.duration:
+        if args.duration.strip().lower() == "clear":
+            clear_state()
+            print(NO_ACTIVE_TIMER_MESSAGE)
+            return None
         try:
             remaining_sec, total_sec = parse_duration(args.duration)
         except ValueError as exc:
@@ -794,17 +803,7 @@ def _resolve_timer_state(args):
     else:
         state = load_state()
         if state is None:
-            if args.run:
-                print(NO_ACTIVE_TIMER_MESSAGE)
-            else:
-                last_finished = load_last_finished()
-                if last_finished is not None:
-                    print(_select_expired_message(*last_finished))
-                else:
-                    if args.one_line or args.graph_only:
-                        print(_select_expired_message(None, None))
-                    else:
-                        print(NO_ACTIVE_TIMER_MESSAGE)
+            print(NO_ACTIVE_TIMER_MESSAGE)
             return None
         finish_at, duration_sec = state
 

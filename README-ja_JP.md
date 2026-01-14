@@ -16,7 +16,7 @@ pipx install decafe-timer
 
 ## 使い方
 
-CLI の基本は次の 3 点です。
+CLI の基本は次の 4 点です。
 
 1. 期間を渡すと新しいクールダウンが作成され、引数なしなら保存済みのタイマーを再開します。`2h`、`15m30s`、`0:45:00` のような単一指定に加えて、残り/総時間のペア (`3h/5h` など、スラッシュ前後に空白可) も使えます。
 2. `--run` はライブ表示を最後まで更新し続けるかどうかを決めます。付けなければ現在の状態を 1 回だけ表示して終了します。
@@ -34,6 +34,7 @@ CLI の基本は次の 3 点です。
      - `--run` と併用した場合は同じ ASCII バーでライブ更新されます (ANSI で着色)。
    - スナップショット完了:
      - スナップショット表示ではクールダウン完了時に `[You may drink coffee now.]` が表示されます。
+4. `clear` を使うと保存済みのタイマーを消去し、未設定時の表示を `---` にできます。
 
 ```console
 decafe-timer 45m          # 新しいタイマーを始めてスナップショットを 1 回表示
@@ -45,6 +46,7 @@ decafe-timer --run --one-line 10m  # ASCII 1 行表示でライブ更新
 decafe-timer --bar-style blocks   # 以前のブロック表示を使う
 decafe-timer --bar-style counting-rod  # Counting Rod Numerals のバーを使う
 decafe-timer --graph-only # ASCII バーのみのスナップショットを表示
+decafe-timer clear        # タイマーを消去して `---` 表示にする
 decafe-timer --color=always # TTY 以外でも ANSI を強制
 ```
 
