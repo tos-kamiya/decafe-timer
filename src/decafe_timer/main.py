@@ -26,20 +26,20 @@ def _state_file() -> Path:
 
 EXPIRED_MESSAGES = [
     "Cooldown expired! ☕ You may drink coffee now.",
-    # やさしく励ましてくれる系
+    # Gentle encouragement
     "Your break is over -- enjoy your coffee, gently.",
     "You’ve waited well. Treat yourself to a warm cup.",
     "Time’s up. A calm sip is yours.",
-    # ふんわり癒し系
+    # Soft, calming tone
     "Your coffee time has arrived -- relax and enjoy.",
     "A warm cup is waiting for you.",
     "The timer’s done. Brew a moment of comfort.",
     "Ease back in. Coffee is ready when you are.",
-    # ちょっとユーモア系
+    # Light humor
     "Permission granted: caffeination may proceed.",
     "Coffee mode unlocked. Use wisely.",
     "Alert: Bean protocol complete.",
-    # 行動変容をそっと支援する系
+    # Gentle behavior support
     "If you choose to, a small cup won’t hurt now.",
     "Ready when you are. Keep listening to your body.",
     "You did the wait. Now choose what feels right.",
@@ -137,7 +137,7 @@ def _schedule_timer(hours: int, minutes: int, seconds: int):
 
 
 # ------------------------------
-# 永続化まわり
+# Persistence helpers
 # ------------------------------
 _broken_state_notice_shown = False
 
@@ -179,7 +179,7 @@ def _write_state_payload(payload: dict):
 
 
 def save_state(finish_at: datetime, duration_sec: int):
-    """終了予定時刻と総時間、現在時刻をキャッシュに保存"""
+    """Save finish time, total duration, and current time to cache."""
     now = datetime.now()
     payload = {
         "finish_at": finish_at.isoformat(),
@@ -194,7 +194,7 @@ def save_state(finish_at: datetime, duration_sec: int):
 
 
 def load_state():
-    """キャッシュから終了予定時刻と総時間を読み出す"""
+    """Load finish time and total duration from cache."""
     data = _read_state_payload()
     finish_at_raw = data.get("finish_at")
     duration_raw = data.get("duration_sec")
@@ -209,7 +209,7 @@ def load_state():
 
 
 def save_last_finished(finish_at: datetime, duration_sec: int):
-    """直近に終了したタイマーの情報だけを保持"""
+    """Persist only the most recent finished timer details."""
     payload = _read_state_payload()
     payload["last_finished"] = {
         "finish_at": finish_at.isoformat(),
@@ -250,7 +250,7 @@ def clear_state():
 
 
 # ------------------------------
-# タイマー本体
+# Timer core
 # ------------------------------
 def start_timer(
     hours=0,
@@ -291,7 +291,7 @@ def run_timer_loop(
     bar_style: str = BAR_STYLE_GREEK_CROSS,
     use_ansi: bool = True,
 ):
-    # resume 用に state から読み直すケース
+    # Refresh from state for resume.
     if finish_at is None or duration_sec is None:
         state = load_state()
         if state is None:
@@ -608,7 +608,7 @@ def resume_timer(
 
 
 # ------------------------------
-# エントリポイント
+# Entry point
 # ------------------------------
 def main(argv=None):
     args = parse_cli_args(argv)
