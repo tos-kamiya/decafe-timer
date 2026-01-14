@@ -24,6 +24,12 @@
 - Therefore, keep `duration_sec` alongside `finish_at` for active timers.
 - If future designs want to compute duration, store `start_at` instead.
 
+## Module structure
+
+- `src/decafe_timer/cli.py`: CLI argument parsing and normalization into a `CliRequest` (aliases for `run`/`clear`, duration string assembly, conflict checks).
+- `src/decafe_timer/duration.py`: Duration parsing helpers for `HH:MM:SS`, `AhBmCs`, and `remaining/total` forms.
+- `src/decafe_timer/main.py`: Timer lifecycle, state persistence, rendering, and CLI entry point wiring.
+
 ## CLI expectations
 
 - `decafe-timer`: show active/expired status if a timer exists; otherwise show `---`.
