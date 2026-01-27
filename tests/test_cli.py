@@ -14,7 +14,7 @@ def test_run_clear_conflict():
     assert error is not None
     assert "Cannot combine run and clear." in error
     assert request.run is True
-    assert request.clear is True
+    assert request.clear is False
 
 
 def test_run_clear_flags_conflict():
@@ -22,7 +22,7 @@ def test_run_clear_flags_conflict():
     assert error is not None
     assert "Cannot combine run and clear." in error
     assert request.run is True
-    assert request.clear is True
+    assert request.clear is False
 
 
 def test_run_with_clear_argument_conflict():
@@ -30,7 +30,7 @@ def test_run_with_clear_argument_conflict():
     assert error is not None
     assert "Cannot combine run and clear." in error
     assert request.run is True
-    assert request.clear is True
+    assert request.clear is False
 
 
 def test_run_with_clear_flag_conflict():
@@ -38,7 +38,7 @@ def test_run_with_clear_flag_conflict():
     assert error is not None
     assert "Cannot combine run and clear." in error
     assert request.run is True
-    assert request.clear is True
+    assert request.clear is False
 
 
 def test_run_alias_with_duration():
@@ -79,6 +79,41 @@ def test_clear_with_duration_rejected():
     assert "clear does not accept a duration." in error
     assert request.run is False
     assert request.clear is True
+
+
+def test_stack_alias_with_duration():
+    request, error = _request_from(["stack", "10m"])
+    assert error is None
+    assert request.stack is True
+    assert request.duration == "10m"
+
+
+def test_stack_flag_with_duration():
+    request, error = _request_from(["--stack", "10m"])
+    assert error is None
+    assert request.stack is True
+    assert request.duration == "10m"
+
+
+def test_stack_plus_duration():
+    request, error = _request_from(["+10m"])
+    assert error is None
+    assert request.stack is True
+    assert request.duration == "10m"
+
+
+def test_stack_requires_duration():
+    request, error = _request_from(["stack"])
+    assert error is not None
+    assert "stack requires a duration." in error
+    assert request.stack is True
+
+
+def test_stack_with_plus_conflict():
+    request, error = _request_from(["--stack", "+10m"])
+    assert error is not None
+    assert "Cannot combine --stack and +duration." in error
+    assert request.stack is False
 
 
 def test_parse_single_duration():
