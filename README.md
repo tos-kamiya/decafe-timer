@@ -50,7 +50,7 @@ decafe-timer --version         # show the current version
 ### Notes
 
 - `start`, `stack`, and `clear` are mutually exclusive in the same invocation.
-- `stack` extends the remaining time without changing the bar scale; it does not change the last-started duration.
+- `stack` extends the remaining time without changing the duration or bar scale; it does not change the last-started duration.
 - If the timer is expired, `stack` starts a new timer using the last-started duration (or 3h).
 - When the remaining time exceeds the bar scale, a `>>` suffix is shown at the end of the bar.
 

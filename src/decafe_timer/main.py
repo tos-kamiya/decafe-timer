@@ -73,14 +73,12 @@ def _select_expired_message(
     return EXPIRED_MESSAGES[index]
 
 
-def _schedule_timer_seconds(
-    remaining_sec: int, total_sec: int, *, bar_scale_sec: Optional[int] = None
-):
+def _schedule_timer_seconds(remaining_sec: int, total_sec: int):
     """Create a new timer from seconds, persist it, and return (finish_at, duration_sec)."""
     if remaining_sec <= 0 or total_sec <= 0:
         raise ValueError("Duration must be positive.")
     finish_at = datetime.now() + timedelta(seconds=remaining_sec)
-    save_state(finish_at, total_sec, bar_scale_sec=bar_scale_sec)
+    save_state(finish_at, total_sec)
     return finish_at, total_sec
 
 
@@ -132,7 +130,10 @@ def _write_state_payload(payload: dict):
     tmp_path.replace(state_file)
 
 
-def save_state(finish_at: datetime, duration_sec: int, bar_scale_sec: Optional[int] = None):
+def save_state(
+    finish_at: datetime,
+    duration_sec: int,
+):
     """Save finish time, total duration, and current time to cache."""
     now = datetime.now()
     payload = {
@@ -150,18 +151,14 @@ def save_state(finish_at: datetime, duration_sec: int, bar_scale_sec: Optional[i
             payload["last_duration_sec"] = int(last_duration)
         except (TypeError, ValueError):
             pass
-    if bar_scale_sec is None or bar_scale_sec <= 0:
-        bar_scale_sec = int(duration_sec)
-    payload["bar_scale_sec"] = int(bar_scale_sec)
     _write_state_payload(payload)
 
 
 def load_state():
-    """Load finish time, total duration, and bar scale from cache."""
+    """Load finish time and total duration from cache."""
     data = _read_state_payload()
     finish_at_raw = data.get("finish_at")
     duration_raw = data.get("duration_sec")
-    bar_scale_raw = data.get("bar_scale_sec")
     if finish_at_raw is None or duration_raw is None:
         return None
     try:
@@ -169,13 +166,7 @@ def load_state():
         duration_sec = int(duration_raw)
     except Exception:
         return None
-    try:
-        bar_scale_sec = int(bar_scale_raw) if bar_scale_raw is not None else duration_sec
-    except Exception:
-        bar_scale_sec = duration_sec
-    if bar_scale_sec <= 0:
-        bar_scale_sec = duration_sec
-    return finish_at, duration_sec, bar_scale_sec
+    return finish_at, duration_sec
 
 
 def save_last_finished(finish_at: datetime, duration_sec: int):
@@ -285,7 +276,6 @@ def start_timer(
 def run_timer_loop(
     finish_at: Optional[datetime] = None,
     duration_sec: Optional[int] = None,
-    bar_scale_sec: Optional[int] = None,
     *,
     one_line: bool = False,
     graph_only: bool = False,
@@ -293,12 +283,12 @@ def run_timer_loop(
     use_ansi: bool = True,
 ):
     # Refresh from state for resume.
-    if finish_at is None or duration_sec is None or bar_scale_sec is None:
+    if finish_at is None or duration_sec is None:
         state = load_state()
         if state is None:
             print(NO_ACTIVE_TIMER_MESSAGE)
             return
-        finish_at, duration_sec, bar_scale_sec = state
+        finish_at, duration_sec = state
 
     now = datetime.now()
     if (finish_at - now) <= timedelta(0):
@@ -313,7 +303,6 @@ def run_timer_loop(
         _run_live_loop(
             finish_at,
             duration_sec,
-            bar_scale_sec,
             one_line=one_line,
             graph_only=graph_only,
             bar_style=bar_style,
@@ -333,7 +322,6 @@ def run_timer_loop(
 def _run_live_loop(
     finish_at: datetime,
     duration_sec: int,
-    bar_scale_sec: int,
     *,
     one_line: bool = False,
     graph_only: bool = False,
@@ -345,7 +333,7 @@ def _run_live_loop(
     while True:
         state = load_state()
         if state is not None:
-            finish_at, duration_sec, bar_scale_sec = state
+            finish_at, duration_sec = state
 
         now = datetime.now()
         remaining = finish_at - now
@@ -356,7 +344,7 @@ def _run_live_loop(
 
         line = render_live_line(
             remaining_sec,
-            bar_scale_sec,
+            duration_sec,
             graph_only=graph_only,
             bar_style=bar_style,
             use_ansi=use_ansi,
@@ -375,7 +363,6 @@ def _run_live_loop(
 def _print_snapshot_status(
     finish_at: datetime,
     duration_sec: int,
-    bar_scale_sec: int,
     *,
     one_line: bool = False,
     graph_only: bool = False,
@@ -394,7 +381,7 @@ def _print_snapshot_status(
     if graph_only:
         line = render_snapshot_line(
             remaining_sec,
-            bar_scale_sec,
+            duration_sec,
             graph_only=True,
             bar_style=bar_style,
             use_ansi=use_ansi,
@@ -405,7 +392,7 @@ def _print_snapshot_status(
     if one_line:
         line = render_snapshot_line(
             remaining_sec,
-            bar_scale_sec,
+            duration_sec,
             graph_only=False,
             bar_style=bar_style,
             use_ansi=use_ansi,
@@ -417,7 +404,7 @@ def _print_snapshot_status(
     remaining_str = format_remaining(remaining_sec)
     bar_line = render_snapshot_line(
         remaining_sec,
-        bar_scale_sec,
+        duration_sec,
         graph_only=True,
         bar_style=bar_style,
         use_ansi=use_ansi,
@@ -444,7 +431,7 @@ def resume_timer(
         print(NO_ACTIVE_TIMER_MESSAGE)
         return
 
-    finish_at, duration_sec, bar_scale_sec = state
+    finish_at, duration_sec = state
     if finish_at <= datetime.now():
         try:
             save_last_finished(finish_at, duration_sec)
@@ -459,7 +446,6 @@ def resume_timer(
     run_timer_loop(
         finish_at,
         duration_sec,
-        bar_scale_sec,
         one_line=one_line,
         graph_only=graph_only,
         bar_style=bar_style,
@@ -479,14 +465,13 @@ def main(argv=None):
     resolved = _resolve_timer_state(args, request)
     if resolved is None:
         return
-    finish_at, duration_sec, bar_scale_sec, new_timer_started = resolved
+    finish_at, duration_sec, new_timer_started = resolved
 
     if args.run:
         _run_live_mode(
             args,
             finish_at,
             duration_sec,
-            bar_scale_sec,
             new_timer_started,
         )
         return
@@ -494,7 +479,6 @@ def main(argv=None):
     _print_snapshot_status(
         finish_at,
         duration_sec,
-        bar_scale_sec,
         one_line=args.one_line,
         graph_only=args.graph_only,
         bar_style=args.bar_style,
@@ -504,7 +488,6 @@ def main(argv=None):
 def _resolve_timer_state(args, request: CliRequest):
     finish_at = None
     duration_sec = None
-    bar_scale_sec = None
     new_timer_started = False
 
     if request.clear:
@@ -526,11 +509,10 @@ def _resolve_timer_state(args, request: CliRequest):
             base_duration = load_last_duration() or DEFAULT_DURATION_SEC
             finish_at = now + timedelta(seconds=added_sec)
             duration_sec = base_duration
-            bar_scale_sec = base_duration
-            save_state(finish_at, duration_sec, bar_scale_sec=bar_scale_sec)
+            save_state(finish_at, duration_sec)
             new_timer_started = True
         else:
-            finish_at, duration_sec, bar_scale_sec = state
+            finish_at, duration_sec = state
             if finish_at <= now:
                 try:
                     save_last_finished(finish_at, duration_sec)
@@ -539,25 +521,20 @@ def _resolve_timer_state(args, request: CliRequest):
                 base_duration = load_last_duration() or DEFAULT_DURATION_SEC
                 finish_at = now + timedelta(seconds=added_sec)
                 duration_sec = base_duration
-                bar_scale_sec = base_duration
-                save_state(finish_at, duration_sec, bar_scale_sec=bar_scale_sec)
+                save_state(finish_at, duration_sec)
                 new_timer_started = True
             else:
                 remaining_sec = int((finish_at - now).total_seconds())
                 finish_at = now + timedelta(seconds=remaining_sec + added_sec)
-                duration_sec = duration_sec + added_sec
-                save_state(finish_at, duration_sec, bar_scale_sec=bar_scale_sec)
-        if bar_scale_sec is None:
-            bar_scale_sec = duration_sec
-        return finish_at, duration_sec, bar_scale_sec, new_timer_started
+                save_state(finish_at, duration_sec)
+        return finish_at, duration_sec, new_timer_started
 
     if request.start:
         duration_sec = load_last_duration() or DEFAULT_DURATION_SEC
         finish_at, duration_sec = _schedule_timer_seconds(duration_sec, duration_sec)
-        bar_scale_sec = duration_sec
         save_last_duration(duration_sec)
         new_timer_started = True
-        return finish_at, duration_sec, bar_scale_sec, new_timer_started
+        return finish_at, duration_sec, new_timer_started
 
     if request.duration is not None:
         try:
@@ -571,21 +548,22 @@ def _resolve_timer_state(args, request: CliRequest):
         except ValueError as exc:
             print(str(exc))
             return None
-        bar_scale_sec = duration_sec
         save_last_duration(duration_sec)
         new_timer_started = True
-        return finish_at, duration_sec, bar_scale_sec, new_timer_started
+        return finish_at, duration_sec, new_timer_started
 
     state = load_state()
     if state is None:
         print(NO_ACTIVE_TIMER_MESSAGE)
         return None
-    finish_at, duration_sec, bar_scale_sec = state
+    finish_at, duration_sec = state
 
-    return finish_at, duration_sec, bar_scale_sec, new_timer_started
+    return finish_at, duration_sec, new_timer_started
 
 
-def _run_live_mode(args, finish_at, duration_sec, bar_scale_sec, new_timer_started):
+def _run_live_mode(
+    args, finish_at, duration_sec, new_timer_started
+):
     if finish_at > datetime.now():
         if new_timer_started:
             print(
@@ -600,7 +578,6 @@ def _run_live_mode(args, finish_at, duration_sec, bar_scale_sec, new_timer_start
     run_timer_loop(
         finish_at,
         duration_sec,
-        bar_scale_sec,
         one_line=args.one_line,
         graph_only=args.graph_only,
         bar_style=args.bar_style,
