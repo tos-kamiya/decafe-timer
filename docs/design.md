@@ -21,7 +21,6 @@
 
 - `finish_at` is an absolute timestamp; it does not encode the original duration.
 - `duration_sec` stores the base duration from start (not changed by stack).
-- `last_finished` stores the most recently completed timer (`finish_at`, `duration_sec`).
 - `last_duration_sec` stores the most recently started duration for `start` defaults.
   - This value is updated only on `start` (not on `stack`).
   - If no active timer exists, the last duration is used; if missing, default to 3h.
@@ -35,7 +34,6 @@
 
 - `stack` adds time to the remaining duration (e.g., remaining 2h + stack 5h = 7h remaining).
 - `duration_sec` is unchanged, and the bar scale is always based on `duration_sec`.
-- `stack` does not update `last_duration_sec`.
 - If the timer is expired, `stack` behaves as a new start using the last-started duration (or 3h).
 
 ## Module structure

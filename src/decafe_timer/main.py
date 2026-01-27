@@ -142,9 +142,6 @@ def save_state(
         "last_saved_at": now.isoformat(),
     }
     existing = _read_state_payload()
-    last_finished = existing.get("last_finished")
-    if isinstance(last_finished, dict):
-        payload["last_finished"] = last_finished
     last_duration = existing.get("last_duration_sec")
     if isinstance(last_duration, (int, float, str)):
         try:
@@ -159,33 +156,6 @@ def load_state():
     data = _read_state_payload()
     finish_at_raw = data.get("finish_at")
     duration_raw = data.get("duration_sec")
-    if finish_at_raw is None or duration_raw is None:
-        return None
-    try:
-        finish_at = datetime.fromisoformat(finish_at_raw)
-        duration_sec = int(duration_raw)
-    except Exception:
-        return None
-    return finish_at, duration_sec
-
-
-def save_last_finished(finish_at: datetime, duration_sec: int):
-    """Persist only the most recent finished timer details."""
-    payload = _read_state_payload()
-    payload["last_finished"] = {
-        "finish_at": finish_at.isoformat(),
-        "duration_sec": int(duration_sec),
-    }
-    _write_state_payload(payload)
-
-
-def load_last_finished():
-    data = _read_state_payload()
-    last_finished = data.get("last_finished")
-    if not isinstance(last_finished, dict):
-        return None
-    finish_at_raw = last_finished.get("finish_at")
-    duration_raw = last_finished.get("duration_sec")
     if finish_at_raw is None or duration_raw is None:
         return None
     try:
@@ -218,11 +188,8 @@ def load_last_duration():
 
 def clear_state():
     payload = _read_state_payload()
-    last_finished = payload.get("last_finished")
     last_duration = payload.get("last_duration_sec")
     to_keep = {}
-    if isinstance(last_finished, dict):
-        to_keep["last_finished"] = last_finished
     if isinstance(last_duration, (int, float, str)):
         try:
             to_keep["last_duration_sec"] = int(last_duration)
@@ -292,10 +259,6 @@ def run_timer_loop(
 
     now = datetime.now()
     if (finish_at - now) <= timedelta(0):
-        try:
-            save_last_finished(finish_at, duration_sec)
-        except Exception:
-            pass
         print(_select_expired_message(finish_at, duration_sec))
         return
 
@@ -309,10 +272,6 @@ def run_timer_loop(
             use_ansi=use_ansi,
         )
 
-        try:
-            save_last_finished(finish_at, duration_sec)
-        except Exception:
-            pass
         print(_select_expired_message(finish_at, duration_sec))
 
     except KeyboardInterrupt:
@@ -371,10 +330,6 @@ def _print_snapshot_status(
 ):
     remaining_sec = int((finish_at - datetime.now()).total_seconds())
     if remaining_sec <= 0:
-        try:
-            save_last_finished(finish_at, duration_sec)
-        except Exception:
-            pass
         print(_select_expired_message(finish_at, duration_sec))
         return
 
@@ -433,10 +388,6 @@ def resume_timer(
 
     finish_at, duration_sec = state
     if finish_at <= datetime.now():
-        try:
-            save_last_finished(finish_at, duration_sec)
-        except Exception:
-            pass
         print(_select_expired_message(finish_at, duration_sec))
         return
     if not one_line and not graph_only:
@@ -514,10 +465,6 @@ def _resolve_timer_state(args, request: CliRequest):
         else:
             finish_at, duration_sec = state
             if finish_at <= now:
-                try:
-                    save_last_finished(finish_at, duration_sec)
-                except Exception:
-                    pass
                 base_duration = load_last_duration() or DEFAULT_DURATION_SEC
                 finish_at = now + timedelta(seconds=added_sec)
                 duration_sec = base_duration
