@@ -21,9 +21,12 @@ pipx install decafe-timer
 ```console
 decafe-timer 45m          # 新しいタイマーを始めてスナップショットを 1 回表示
 decafe-timer 3h/5h        # 3 時間残り / 5 時間のタイマーで開始
-decafe-timer              # 保存済みタイマーを再開し、スナップショットを 1 回表示
+decafe-timer              # タイマーがあればスナップショットを 1 回表示、なければ ---
+decafe-timer start        # 前回の期間で開始（初回は 3h）
 decafe-timer run 45m      # 新しいタイマーを始め、カウントダウンを表示し続ける
 decafe-timer run          # 進行中のタイマーをライブ表示で再開
+decafe-timer stack 5h     # 残り時間に加算する
+decafe-timer +5h          # stack 5h の短縮形
 decafe-timer clear        # タイマーを消去して `---` 表示にする
 ```
 
@@ -36,12 +39,20 @@ decafe-timer --bar-style blocks        # 以前のブロック表示を使う
 decafe-timer --bar-style counting-rod  # Counting Rod Numerals のバーを使う
 decafe-timer --color=always    # TTY 以外でも ANSI を強制
 decafe-timer --color=never     # ANSI を無効化する
+decafe-timer --stack 5h        # 残り時間に加算する
 decafe-timer --run 45m         # `run` の別名 (カウントダウンを表示し続ける)
 decafe-timer --run             # `run` の別名 (ライブ表示で再開)
 decafe-timer --clear           # `clear` の別名 (`---` 表示にする)
 decafe-timer 0                 # 0 指定でタイマーを消去する
 decafe-timer --version         # バージョンを表示
 ```
+
+### メモ
+
+- `start` / `stack` / `clear` は同時に使えません。
+- `stack` は残り時間だけを伸ばし、期間やバーの基準長は変えません。
+- 残り時間が期間より長い場合は、バーの末尾に `>>` が表示されます。
+- 期限切れ後の `stack` は、前回の期間（なければ 3h）で新規開始します。
 
 ## ライセンス
 
