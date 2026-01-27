@@ -11,6 +11,8 @@ from .__about__ import __version__
 class CliRequest:
     run: bool
     clear: bool
+    start: bool
+    stack: bool
     duration: Optional[str]
 
 
@@ -22,8 +24,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         metavar="ARG",
         help=(
             "Set a new timer (e.g. 2h, 15m30s, 0:25:00, or remaining/total like 3h/5h). "
-            "Omit to resume. Use 'run' to keep updating continuously, and use "
-            "'clear', --clear, or 0 to remove the current timer."
+            "Use 'start' to begin with the last duration, 'stack' or +5h to add time, "
+            "and 'clear', --clear, or 0 to remove the current timer."
         ),
     )
     parser.add_argument(
@@ -50,6 +52,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--run",
         action="store_true",
         help="Alias for the run command (keep updating continuously).",
+    )
+    parser.add_argument(
+        "--stack",
+        action="store_true",
+        help="Alias for the stack command (add time to the remaining duration).",
     )
     parser.add_argument(
         "--bar-style",
@@ -79,37 +86,80 @@ def normalize_cli_request(args: argparse.Namespace) -> tuple[CliRequest, Optiona
     tokens_lower = [token.strip().lower() for token in tokens]
     requested_run = bool(getattr(args, "run", False))
     requested_clear = bool(getattr(args, "clear", False))
+    requested_stack = bool(getattr(args, "stack", False))
+    requested_start = False
 
-    if tokens_lower:
+    def pop_token():
+        nonlocal tokens, tokens_lower
+        tokens = tokens[1:]
+        tokens_lower = tokens_lower[1:]
+
+    while tokens_lower:
         first = tokens_lower[0]
         if first == "run":
             requested_run = True
-            tokens = tokens[1:]
-            tokens_lower = tokens_lower[1:]
-        elif first in {"clear", "0"}:
+            pop_token()
+            continue
+        if first in {"clear", "0"}:
             requested_clear = True
-            tokens = tokens[1:]
-            tokens_lower = tokens_lower[1:]
+            pop_token()
+            continue
+        if first == "start":
+            requested_start = True
+            pop_token()
+            continue
+        if first == "stack":
+            requested_stack = True
+            pop_token()
+            continue
+        if first.startswith("+"):
+            if first == "+":
+                return CliRequest(requested_run, False, False, False, None), (
+                    "stack requires a duration."
+                )
+            if requested_stack:
+                return CliRequest(requested_run, False, False, False, None), (
+                    "Cannot combine --stack and +duration."
+                )
+            requested_stack = True
+            tokens[0] = tokens[0][1:]
+            tokens_lower[0] = tokens_lower[0][1:]
+        break
+
+    if sum([requested_clear, requested_start, requested_stack]) > 1:
+        return CliRequest(requested_run, False, False, False, None), (
+            "Cannot combine start, stack, and clear."
+        )
 
     if requested_run and requested_clear:
-        return CliRequest(requested_run, requested_clear, None), (
+        return CliRequest(requested_run, False, False, False, None), (
             "Cannot combine run and clear."
         )
 
     if requested_run and any(token in {"clear", "0"} for token in tokens_lower):
-        return CliRequest(requested_run, True, None), (
+        return CliRequest(requested_run, False, False, False, None), (
             "Cannot combine run and clear."
         )
 
     if requested_clear and "run" in tokens_lower:
-        return CliRequest(True, requested_clear, None), (
+        return CliRequest(requested_run, False, False, False, None), (
             "Cannot combine run and clear."
         )
 
     if requested_clear and tokens:
-        return CliRequest(requested_run, requested_clear, None), (
+        return CliRequest(requested_run, requested_clear, False, False, None), (
             "clear does not accept a duration."
         )
 
+    if requested_stack and not tokens:
+        return CliRequest(requested_run, requested_clear, requested_start, requested_stack, None), (
+            "stack requires a duration."
+        )
+
+    if requested_stack and any(token.startswith("+") for token in tokens_lower):
+        return CliRequest(requested_run, False, False, False, None), (
+            "Cannot combine --stack and +duration."
+        )
+
     duration = " ".join(tokens) if tokens else None
-    return CliRequest(requested_run, requested_clear, duration), None
+    return CliRequest(requested_run, requested_clear, requested_start, requested_stack, duration), None

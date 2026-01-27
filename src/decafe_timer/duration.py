@@ -11,6 +11,9 @@ INVALID_DURATION_MESSAGE = (
     "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS. "
     "You can also use remaining/total like 3h/5h."
 )
+INVALID_STACK_DURATION_MESSAGE = (
+    "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS for stack."
+)
 
 
 def _parse_single_duration(duration_str: str):
@@ -104,3 +107,17 @@ def parse_duration(duration_str: str):
         raise ValueError(INVALID_DURATION_MESSAGE)
     single_sec = duration_to_seconds(h, m, s)
     return single_sec, single_sec
+
+
+def parse_simple_duration(duration_str: str) -> int:
+    """Parse a single duration (no remaining/total). Returns seconds."""
+    duration_str = duration_str.strip()
+    if not duration_str:
+        raise ValueError(INVALID_STACK_DURATION_MESSAGE)
+    if FRACTION_SPLIT_PATTERN.search(duration_str):
+        raise ValueError(INVALID_STACK_DURATION_MESSAGE)
+    try:
+        h, m, s = _parse_single_duration(duration_str)
+    except ValueError:
+        raise ValueError(INVALID_STACK_DURATION_MESSAGE)
+    return duration_to_seconds(h, m, s)

@@ -1,7 +1,6 @@
 import hashlib
 import json
 import random
-import re
 import sys
 import time
 from datetime import datetime, timedelta
@@ -9,7 +8,19 @@ from pathlib import Path
 from typing import Optional
 
 from .cli import CliRequest, normalize_cli_request, parse_cli_args
-from .duration import INVALID_DURATION_MESSAGE, duration_to_seconds, parse_duration
+from .duration import (
+    INVALID_DURATION_MESSAGE,
+    duration_to_seconds,
+    parse_duration,
+    parse_simple_duration,
+)
+from .render import (
+    BAR_STYLE_GREEK_CROSS,
+    format_remaining,
+    render_live_line,
+    render_snapshot_line,
+    visible_length,
+)
 
 APP_NAME = "coffee_timer"
 APP_AUTHOR = "tos-kamiya"
@@ -47,66 +58,7 @@ EXPIRED_MESSAGES = [
 NO_ACTIVE_TIMER_MESSAGE = "---"
 BROKEN_STATE_MESSAGE = "State file is invalid; ignoring it."
 
-
-BAR_CHAR_WIDTH = 20
-BAR_CHAR_WIDTH_BLOCKS = BAR_CHAR_WIDTH * 2
-ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
-
-BAR_STYLE_BLOCKS = "blocks"
-BAR_STYLE_GREEK_CROSS = "greek-cross"
-BAR_STYLE_COUNTING_ROD = "counting-rod"
-BAR_FILLED_CHAR = "\U0001d15b"  # black vertical rectangle
-BAR_EMPTY_CHAR = "\U0001d15a"  # white vertical rectangle
-# ANSI color helpers for live mode.
-ANSI_RESET = "\x1b[0m"
-ANSI_DIM = "\x1b[2m"
-ANSI_RED = "\x1b[31m"
-ANSI_YELLOW = "\x1b[33m"
-ANSI_GREEN = "\x1b[32m"
-ANSI_BLUE = "\x1b[34m"
-# Greek cross levels from THIN to EXTREMELY HEAVY (U+1F7A1..U+1F7A7).
-GREEK_CROSS_LEVELS = [
-    "\U0001f7a1",
-    "\U0001f7a2",
-    "\U0001f7a3",
-    "\U0001f7a4",
-    "\U0001f7a5",
-    "\U0001f7a6",
-    "\U0001f7a7",
-]
-GREEK_CROSS_EMPTY_CHAR = GREEK_CROSS_LEVELS[0]
-GREEK_CROSS_FULL_CHAR = GREEK_CROSS_LEVELS[-1]
-# Counting rod numerals from lowest to highest (U+1D369..U+1D36D).
-COUNTING_ROD_LEVELS = [
-    "\U0001d369",
-    "\U0001d36a",
-    "\U0001d36b",
-    "\U0001d36c",
-    "\U0001d36d",
-]
-COUNTING_ROD_EMPTY_CHAR = COUNTING_ROD_LEVELS[0]
-COUNTING_ROD_FULL_CHAR = COUNTING_ROD_LEVELS[-1]
-
-
-
-def _ansi_table(enabled: bool) -> dict[str, str]:
-    if not enabled:
-        return {
-            "reset": "",
-            "dim": "",
-            "red": "",
-            "yellow": "",
-            "green": "",
-            "blue": "",
-        }
-    return {
-        "reset": ANSI_RESET,
-        "dim": ANSI_DIM,
-        "red": ANSI_RED,
-        "yellow": ANSI_YELLOW,
-        "green": ANSI_GREEN,
-        "blue": ANSI_BLUE,
-    }
+DEFAULT_DURATION_SEC = duration_to_seconds(3, 0, 0)
 
 
 def _select_expired_message(
@@ -121,12 +73,14 @@ def _select_expired_message(
     return EXPIRED_MESSAGES[index]
 
 
-def _schedule_timer_seconds(remaining_sec: int, total_sec: int):
+def _schedule_timer_seconds(
+    remaining_sec: int, total_sec: int, *, bar_scale_sec: Optional[int] = None
+):
     """Create a new timer from seconds, persist it, and return (finish_at, duration_sec)."""
     if remaining_sec <= 0 or total_sec <= 0:
         raise ValueError("Duration must be positive.")
     finish_at = datetime.now() + timedelta(seconds=remaining_sec)
-    save_state(finish_at, total_sec)
+    save_state(finish_at, total_sec, bar_scale_sec=bar_scale_sec)
     return finish_at, total_sec
 
 
@@ -178,7 +132,7 @@ def _write_state_payload(payload: dict):
     tmp_path.replace(state_file)
 
 
-def save_state(finish_at: datetime, duration_sec: int):
+def save_state(finish_at: datetime, duration_sec: int, bar_scale_sec: Optional[int] = None):
     """Save finish time, total duration, and current time to cache."""
     now = datetime.now()
     payload = {
@@ -190,14 +144,24 @@ def save_state(finish_at: datetime, duration_sec: int):
     last_finished = existing.get("last_finished")
     if isinstance(last_finished, dict):
         payload["last_finished"] = last_finished
+    last_duration = existing.get("last_duration_sec")
+    if isinstance(last_duration, (int, float, str)):
+        try:
+            payload["last_duration_sec"] = int(last_duration)
+        except (TypeError, ValueError):
+            pass
+    if bar_scale_sec is None or bar_scale_sec <= 0:
+        bar_scale_sec = int(duration_sec)
+    payload["bar_scale_sec"] = int(bar_scale_sec)
     _write_state_payload(payload)
 
 
 def load_state():
-    """Load finish time and total duration from cache."""
+    """Load finish time, total duration, and bar scale from cache."""
     data = _read_state_payload()
     finish_at_raw = data.get("finish_at")
     duration_raw = data.get("duration_sec")
+    bar_scale_raw = data.get("bar_scale_sec")
     if finish_at_raw is None or duration_raw is None:
         return None
     try:
@@ -205,7 +169,13 @@ def load_state():
         duration_sec = int(duration_raw)
     except Exception:
         return None
-    return finish_at, duration_sec
+    try:
+        bar_scale_sec = int(bar_scale_raw) if bar_scale_raw is not None else duration_sec
+    except Exception:
+        bar_scale_sec = duration_sec
+    if bar_scale_sec <= 0:
+        bar_scale_sec = duration_sec
+    return finish_at, duration_sec, bar_scale_sec
 
 
 def save_last_finished(finish_at: datetime, duration_sec: int):
@@ -235,11 +205,40 @@ def load_last_finished():
     return finish_at, duration_sec
 
 
+def save_last_duration(duration_sec: int):
+    payload = _read_state_payload()
+    payload["last_duration_sec"] = int(duration_sec)
+    _write_state_payload(payload)
+
+
+def load_last_duration():
+    data = _read_state_payload()
+    raw = data.get("last_duration_sec")
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return value
+
+
 def clear_state():
     payload = _read_state_payload()
     last_finished = payload.get("last_finished")
+    last_duration = payload.get("last_duration_sec")
+    to_keep = {}
     if isinstance(last_finished, dict):
-        _write_state_payload({"last_finished": last_finished})
+        to_keep["last_finished"] = last_finished
+    if isinstance(last_duration, (int, float, str)):
+        try:
+            to_keep["last_duration_sec"] = int(last_duration)
+        except (TypeError, ValueError):
+            pass
+    if to_keep:
+        _write_state_payload(to_keep)
         return
     state_file = _state_file()
     if state_file.exists():
@@ -264,6 +263,7 @@ def start_timer(
     try:
         duration_sec = duration_to_seconds(hours, minutes, seconds)
         finish_at, duration_sec = _schedule_timer_seconds(duration_sec, duration_sec)
+        save_last_duration(duration_sec)
     except ValueError as exc:
         print(str(exc))
         return
@@ -285,6 +285,7 @@ def start_timer(
 def run_timer_loop(
     finish_at: Optional[datetime] = None,
     duration_sec: Optional[int] = None,
+    bar_scale_sec: Optional[int] = None,
     *,
     one_line: bool = False,
     graph_only: bool = False,
@@ -292,12 +293,12 @@ def run_timer_loop(
     use_ansi: bool = True,
 ):
     # Refresh from state for resume.
-    if finish_at is None or duration_sec is None:
+    if finish_at is None or duration_sec is None or bar_scale_sec is None:
         state = load_state()
         if state is None:
             print(NO_ACTIVE_TIMER_MESSAGE)
             return
-        finish_at, duration_sec = state
+        finish_at, duration_sec, bar_scale_sec = state
 
     now = datetime.now()
     if (finish_at - now) <= timedelta(0):
@@ -312,6 +313,7 @@ def run_timer_loop(
         _run_live_loop(
             finish_at,
             duration_sec,
+            bar_scale_sec,
             one_line=one_line,
             graph_only=graph_only,
             bar_style=bar_style,
@@ -331,6 +333,7 @@ def run_timer_loop(
 def _run_live_loop(
     finish_at: datetime,
     duration_sec: int,
+    bar_scale_sec: int,
     *,
     one_line: bool = False,
     graph_only: bool = False,
@@ -342,7 +345,7 @@ def _run_live_loop(
     while True:
         state = load_state()
         if state is not None:
-            finish_at, duration_sec = state
+            finish_at, duration_sec, bar_scale_sec = state
 
         now = datetime.now()
         remaining = finish_at - now
@@ -351,14 +354,14 @@ def _run_live_loop(
         if remaining_sec <= 0:
             break
 
-        line = _render_live_line(
+        line = render_live_line(
             remaining_sec,
-            duration_sec,
+            bar_scale_sec,
             graph_only=graph_only,
             bar_style=bar_style,
             use_ansi=use_ansi,
         )
-        visible_len = _visible_length(line) if use_ansi else len(line)
+        visible_len = visible_length(line) if use_ansi else len(line)
         pad = max(last_line_len - visible_len, 0)
         print(line + (" " * pad), end="\r", flush=True)
         last_line_len = visible_len
@@ -372,6 +375,7 @@ def _run_live_loop(
 def _print_snapshot_status(
     finish_at: datetime,
     duration_sec: int,
+    bar_scale_sec: int,
     *,
     one_line: bool = False,
     graph_only: bool = False,
@@ -388,9 +392,9 @@ def _print_snapshot_status(
         return
 
     if graph_only:
-        line = _render_snapshot_line(
+        line = render_snapshot_line(
             remaining_sec,
-            duration_sec,
+            bar_scale_sec,
             graph_only=True,
             bar_style=bar_style,
             use_ansi=use_ansi,
@@ -399,9 +403,9 @@ def _print_snapshot_status(
         return
 
     if one_line:
-        line = _render_snapshot_line(
+        line = render_snapshot_line(
             remaining_sec,
-            duration_sec,
+            bar_scale_sec,
             graph_only=False,
             bar_style=bar_style,
             use_ansi=use_ansi,
@@ -410,10 +414,10 @@ def _print_snapshot_status(
         return
 
     expires_at = finish_at.strftime("%Y-%m-%d %H:%M:%S")
-    remaining_str = _format_remaining(remaining_sec)
-    bar_line = _render_snapshot_line(
+    remaining_str = format_remaining(remaining_sec)
+    bar_line = render_snapshot_line(
         remaining_sec,
-        duration_sec,
+        bar_scale_sec,
         graph_only=True,
         bar_style=bar_style,
         use_ansi=use_ansi,
@@ -421,152 +425,6 @@ def _print_snapshot_status(
     print(f"Remaining: {remaining_str}")
     print(f"Expires at: {expires_at}")
     print(bar_line)
-
-
-def _format_remaining(remaining_sec: int) -> str:
-    h = remaining_sec // 3600
-    m = (remaining_sec % 3600) // 60
-    s = remaining_sec % 60
-    return f"{h:02d}:{m:02d}:{s:02d}"
-
-
-def _render_live_line(
-    remaining_sec: int,
-    duration_sec: int,
-    *,
-    graph_only: bool = False,
-    bar_style: str = BAR_STYLE_GREEK_CROSS,
-    use_ansi: bool = False,
-) -> str:
-    return _render_snapshot_line(
-        remaining_sec,
-        duration_sec,
-        graph_only=graph_only,
-        bar_style=bar_style,
-        use_ansi=use_ansi,
-    )
-
-
-def _render_snapshot_line(
-    remaining_sec: int,
-    duration_sec: int,
-    *,
-    graph_only: bool = False,
-    bar_style: str = BAR_STYLE_GREEK_CROSS,
-    use_ansi: bool = False,
-) -> str:
-    ansi = _ansi_table(use_ansi)
-    remaining_str = _format_remaining(max(remaining_sec, 0))
-    if duration_sec <= 0:
-        ratio = 0.0
-    else:
-        ratio = max(0.0, min(remaining_sec / duration_sec, 1.0))
-    bar = _render_bar(_bar_segments(bar_style), ratio, bar_style, ansi)
-    if graph_only:
-        return bar
-    return f"{remaining_str} {bar}"
-
-
-def _compute_level_segments(levels: list[str], segments: int, ratio: float):
-    ratio = max(0.0, min(ratio, 1.0))
-    units_per_block = len(levels) - 1
-    total_units = segments * units_per_block
-    filled_units = int(ratio * total_units + 0.5)
-    filled_units = max(0, min(filled_units, total_units))
-    full_blocks = filled_units // units_per_block
-    remainder = filled_units % units_per_block
-    empty_blocks = segments - full_blocks - (1 if remainder else 0)
-    return full_blocks, remainder, empty_blocks
-
-
-def _bar_color_for_ratio(ratio: float, *, ansi: dict[str, str]) -> str:
-    if ratio >= 0.3:
-        return ansi["red"]
-    if ratio >= 0.15:
-        return ansi["yellow"]
-    if ratio >= 0.07:
-        return ansi["green"]
-    return ansi["blue"]
-
-
-def _render_greek_cross_bar(
-    segments: int, ratio: float, *, ansi: dict[str, str]
-) -> str:
-    full_blocks, remainder, empty_blocks = _compute_level_segments(
-        GREEK_CROSS_LEVELS, segments, ratio
-    )
-    filled_style = _bar_color_for_ratio(ratio, ansi=ansi)
-    pieces = []
-    pieces.extend([(GREEK_CROSS_FULL_CHAR, filled_style)] * full_blocks)
-    if remainder:
-        pieces.append((GREEK_CROSS_LEVELS[remainder], filled_style))
-    pieces.extend([(GREEK_CROSS_EMPTY_CHAR, ansi["dim"])] * empty_blocks)
-    return _render_ansi_spaced(pieces, ansi=ansi)
-
-
-def _render_counting_rod_bar(
-    segments: int, ratio: float, *, ansi: dict[str, str]
-) -> str:
-    full_blocks, remainder, empty_blocks = _compute_level_segments(
-        COUNTING_ROD_LEVELS, segments, ratio
-    )
-    filled_style = _bar_color_for_ratio(ratio, ansi=ansi)
-    pieces = []
-    pieces.extend([(COUNTING_ROD_FULL_CHAR, filled_style)] * full_blocks)
-    if remainder:
-        pieces.append((COUNTING_ROD_LEVELS[remainder], filled_style))
-    pieces.extend([(COUNTING_ROD_EMPTY_CHAR, ansi["dim"])] * empty_blocks)
-    return _render_ansi_spaced(pieces, ansi=ansi)
-
-
-def _render_blocks_bar(segments: int, ratio: float, *, ansi: dict[str, str]) -> str:
-    ratio = max(0.0, min(ratio, 1.0))
-    filled_segments = int(ratio * segments + 0.5)
-    filled_segments = max(0, min(filled_segments, segments))
-    empty_segments = segments - filled_segments
-    color = _bar_color_for_ratio(ratio, ansi=ansi)
-    return (
-        f"{ansi['reset']}{color}"
-        + (BAR_FILLED_CHAR * filled_segments)
-        + f"{ansi['reset']}{ansi['dim']}"
-        + (BAR_EMPTY_CHAR * empty_segments)
-        + ansi["reset"]
-    )
-
-
-def _render_bar(segments: int, ratio: float, bar_style: str, ansi: dict[str, str]) -> str:
-    if bar_style == BAR_STYLE_BLOCKS:
-        return _render_blocks_bar(segments, ratio, ansi=ansi)
-    if bar_style == BAR_STYLE_COUNTING_ROD:
-        return _render_counting_rod_bar(segments, ratio, ansi=ansi)
-    return _render_greek_cross_bar(segments, ratio, ansi=ansi)
-
-
-def _render_ansi_spaced(pieces, *, ansi: dict[str, str]):
-    output = []
-    current_style = None
-    for index, (char, style) in enumerate(pieces):
-        if index:
-            output.append(" ")
-        if style != current_style:
-            output.append(ansi["reset"])
-            if style:
-                output.append(style)
-            current_style = style
-        output.append(char)
-    if current_style is not None:
-        output.append(ansi["reset"])
-    return "".join(output)
-
-
-def _visible_length(text: str) -> int:
-    return len(ANSI_ESCAPE_PATTERN.sub("", text))
-
-
-def _bar_segments(bar_style: str) -> int:
-    if bar_style == BAR_STYLE_BLOCKS:
-        return BAR_CHAR_WIDTH_BLOCKS
-    return BAR_CHAR_WIDTH
 
 
 def _should_use_ansi(args) -> bool:
@@ -586,7 +444,7 @@ def resume_timer(
         print(NO_ACTIVE_TIMER_MESSAGE)
         return
 
-    finish_at, duration_sec = state
+    finish_at, duration_sec, bar_scale_sec = state
     if finish_at <= datetime.now():
         try:
             save_last_finished(finish_at, duration_sec)
@@ -601,6 +459,7 @@ def resume_timer(
     run_timer_loop(
         finish_at,
         duration_sec,
+        bar_scale_sec,
         one_line=one_line,
         graph_only=graph_only,
         bar_style=bar_style,
@@ -620,13 +479,14 @@ def main(argv=None):
     resolved = _resolve_timer_state(args, request)
     if resolved is None:
         return
-    finish_at, duration_sec, new_timer_started = resolved
+    finish_at, duration_sec, bar_scale_sec, new_timer_started = resolved
 
     if args.run:
         _run_live_mode(
             args,
             finish_at,
             duration_sec,
+            bar_scale_sec,
             new_timer_started,
         )
         return
@@ -634,6 +494,7 @@ def main(argv=None):
     _print_snapshot_status(
         finish_at,
         duration_sec,
+        bar_scale_sec,
         one_line=args.one_line,
         graph_only=args.graph_only,
         bar_style=args.bar_style,
@@ -643,6 +504,7 @@ def main(argv=None):
 def _resolve_timer_state(args, request: CliRequest):
     finish_at = None
     duration_sec = None
+    bar_scale_sec = None
     new_timer_started = False
 
     if request.clear:
@@ -650,7 +512,54 @@ def _resolve_timer_state(args, request: CliRequest):
         print(NO_ACTIVE_TIMER_MESSAGE)
         return None
 
-    if request.duration:
+    if request.stack:
+        try:
+            added_sec = parse_simple_duration(request.duration or "")
+        except ValueError as exc:
+            message = str(exc) if str(exc) else INVALID_DURATION_MESSAGE
+            print(message)
+            return None
+
+        state = load_state()
+        now = datetime.now()
+        if state is None:
+            base_duration = load_last_duration() or DEFAULT_DURATION_SEC
+            finish_at = now + timedelta(seconds=added_sec)
+            duration_sec = base_duration
+            bar_scale_sec = base_duration
+            save_state(finish_at, duration_sec, bar_scale_sec=bar_scale_sec)
+            new_timer_started = True
+        else:
+            finish_at, duration_sec, bar_scale_sec = state
+            if finish_at <= now:
+                try:
+                    save_last_finished(finish_at, duration_sec)
+                except Exception:
+                    pass
+                base_duration = load_last_duration() or DEFAULT_DURATION_SEC
+                finish_at = now + timedelta(seconds=added_sec)
+                duration_sec = base_duration
+                bar_scale_sec = base_duration
+                save_state(finish_at, duration_sec, bar_scale_sec=bar_scale_sec)
+                new_timer_started = True
+            else:
+                remaining_sec = int((finish_at - now).total_seconds())
+                finish_at = now + timedelta(seconds=remaining_sec + added_sec)
+                duration_sec = duration_sec + added_sec
+                save_state(finish_at, duration_sec, bar_scale_sec=bar_scale_sec)
+        if bar_scale_sec is None:
+            bar_scale_sec = duration_sec
+        return finish_at, duration_sec, bar_scale_sec, new_timer_started
+
+    if request.start:
+        duration_sec = load_last_duration() or DEFAULT_DURATION_SEC
+        finish_at, duration_sec = _schedule_timer_seconds(duration_sec, duration_sec)
+        bar_scale_sec = duration_sec
+        save_last_duration(duration_sec)
+        new_timer_started = True
+        return finish_at, duration_sec, bar_scale_sec, new_timer_started
+
+    if request.duration is not None:
         try:
             remaining_sec, total_sec = parse_duration(request.duration)
         except ValueError as exc:
@@ -662,18 +571,21 @@ def _resolve_timer_state(args, request: CliRequest):
         except ValueError as exc:
             print(str(exc))
             return None
+        bar_scale_sec = duration_sec
+        save_last_duration(duration_sec)
         new_timer_started = True
-    else:
-        state = load_state()
-        if state is None:
-            print(NO_ACTIVE_TIMER_MESSAGE)
-            return None
-        finish_at, duration_sec = state
+        return finish_at, duration_sec, bar_scale_sec, new_timer_started
 
-    return finish_at, duration_sec, new_timer_started
+    state = load_state()
+    if state is None:
+        print(NO_ACTIVE_TIMER_MESSAGE)
+        return None
+    finish_at, duration_sec, bar_scale_sec = state
+
+    return finish_at, duration_sec, bar_scale_sec, new_timer_started
 
 
-def _run_live_mode(args, finish_at, duration_sec, new_timer_started):
+def _run_live_mode(args, finish_at, duration_sec, bar_scale_sec, new_timer_started):
     if finish_at > datetime.now():
         if new_timer_started:
             print(
@@ -688,6 +600,7 @@ def _run_live_mode(args, finish_at, duration_sec, new_timer_started):
     run_timer_loop(
         finish_at,
         duration_sec,
+        bar_scale_sec,
         one_line=args.one_line,
         graph_only=args.graph_only,
         bar_style=args.bar_style,

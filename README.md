@@ -21,9 +21,12 @@ pipx install decafe-timer
 ```console
 decafe-timer 45m          # start a new timer, print one snapshot
 decafe-timer 3h/5h        # start with 3h remaining out of a 5h total
-decafe-timer              # resume the latest timer, one snapshot
+decafe-timer              # show a snapshot if active; otherwise show ---
+decafe-timer start        # start using the last duration (or 3h on first run)
 decafe-timer run 45m      # start a new timer and watch it count down
 decafe-timer run          # resume the live UI for an active timer
+decafe-timer stack 5h     # add time to the remaining duration
+decafe-timer +5h          # short form for stack 5h
 decafe-timer clear        # clear the current timer (shows ---)
 ```
 
@@ -36,12 +39,20 @@ decafe-timer --bar-style blocks        # use the classic block bar
 decafe-timer --bar-style counting-rod  # use the counting rod bar
 decafe-timer --color=always    # force ANSI colors on
 decafe-timer --color=never     # force ANSI colors off
+decafe-timer --stack 5h        # add time to the remaining duration
 decafe-timer --run 45m         # alias for `run` (start live countdown)
 decafe-timer --run             # alias for `run` (resume live countdown)
 decafe-timer --clear           # alias for `clear` (shows ---)
 decafe-timer 0                 # clear using a zero duration
 decafe-timer --version         # show the current version
 ```
+
+### Notes
+
+- `start`, `stack`, and `clear` are mutually exclusive in the same invocation.
+- `stack` extends the remaining time without changing the bar scale; it does not change the last-started duration.
+- If the timer is expired, `stack` starts a new timer using the last-started duration (or 3h).
+- When the remaining time exceeds the bar scale, a `>>` suffix is shown at the end of the bar.
 
 ## License
 
