@@ -6,6 +6,8 @@
 体内のカフェインが抜けるまでの時間を管理する、軽量なCLIタイマーです。
 カフェインを摂りすぎていないか気になる方のために作りました。
 
+※ 0.9.0 でコマンド体系が大幅に変更されています。
+
 ![decafe-timer screenshot](https://raw.githubusercontent.com/tos-kamiya/decafe-timer/main/images/shot1.png)
 
 ## インストール

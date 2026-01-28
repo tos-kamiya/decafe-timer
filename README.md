@@ -6,6 +6,8 @@
 A lightweight CLI timer for caffeine clearance and intake tracking.
 It was created for people who want to pace caffeine and avoid overuse.
 
+Note: The command structure changed significantly in 0.9.0.
+
 ![decafe-timer screenshot](https://raw.githubusercontent.com/tos-kamiya/decafe-timer/main/images/shot1.png)
 
 ## Installation
