@@ -16,6 +16,13 @@ pipx install decafe-timer
 
 ## Usage
 
+The model is intentionally simple:
+
+- Memory (`mem`) is the bar's maximum length and the default intake size.
+- Remaining time is treated as the amount of caffeine still in your body.
+- `intake` adds to the remaining amount; the bar shrinks as it clears.
+- If you intake again before it reaches zero, remaining can exceed `mem` and the bar shows `>>`.
+
 ### Basics
 
 ```console
