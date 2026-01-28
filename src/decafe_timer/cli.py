@@ -11,27 +11,24 @@ from .__about__ import __version__
 class CliRequest:
     run: bool
     clear: bool
-    start: bool
-    stack: bool
+    intake: bool
+    mem: bool
+    config: bool
     duration: Optional[str]
+    mem_duration: Optional[str]
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Coffee cooldown timer")
+    parser = argparse.ArgumentParser(description="Caffeine clearance timer")
     parser.add_argument(
         "duration",
         nargs="*",
         metavar="ARG",
         help=(
-            "Set a new timer (e.g. 2h, 15m30s, 0:25:00, or remaining/total like 3h/5h). "
-            "Use 'start' to begin with the last duration, 'stack' or +5h to add time, "
-            "and 'clear', --clear, or 0 to remove the current timer."
+            "Intake caffeine (e.g. intake 2h, +5h) or set memory (mem 3h). "
+            "Use 'config' to show memory and bar style. "
+            "Use 'clear' or 0 to remove the current timer."
         ),
-    )
-    parser.add_argument(
-        "--clear",
-        action="store_true",
-        help="Alias for the clear command.",
     )
     parser.add_argument(
         "--version",
@@ -49,24 +46,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Show only the ASCII bar (no time).",
     )
     parser.add_argument(
-        "--run",
-        action="store_true",
-        help="Alias for the run command (keep updating continuously).",
-    )
-    parser.add_argument(
-        "--stack",
-        action="store_true",
-        help="Alias for the stack command (add time to the remaining duration).",
-    )
-    parser.add_argument(
         "--bar-style",
         choices=(
             "greek-cross",
             "counting-rod",
             "blocks",
         ),
-        default="greek-cross",
-        help="Pick the ASCII bar style (default: greek-cross).",
+        default=None,
+        help="Pick the ASCII bar style (default: stored setting or greek-cross).",
     )
     parser.add_argument(
         "--color",
@@ -84,10 +71,11 @@ def parse_cli_args(argv=None) -> argparse.Namespace:
 def normalize_cli_request(args: argparse.Namespace) -> tuple[CliRequest, Optional[str]]:
     tokens = list(getattr(args, "duration", []) or [])
     tokens_lower = [token.strip().lower() for token in tokens]
-    requested_run = bool(getattr(args, "run", False))
-    requested_clear = bool(getattr(args, "clear", False))
-    requested_stack = bool(getattr(args, "stack", False))
-    requested_start = False
+    requested_run = False
+    requested_clear = False
+    requested_intake = False
+    requested_mem = False
+    requested_config = False
 
     def pop_token():
         nonlocal tokens, tokens_lower
@@ -104,62 +92,106 @@ def normalize_cli_request(args: argparse.Namespace) -> tuple[CliRequest, Optiona
             requested_clear = True
             pop_token()
             continue
-        if first == "start":
-            requested_start = True
+        if first == "intake":
+            requested_intake = True
             pop_token()
             continue
-        if first == "stack":
-            requested_stack = True
+        if first == "mem":
+            requested_mem = True
+            pop_token()
+            continue
+        if first == "config":
+            requested_config = True
             pop_token()
             continue
         if first.startswith("+"):
             if first == "+":
-                return CliRequest(requested_run, False, False, False, None), (
-                    "stack requires a duration."
+                return CliRequest(requested_run, False, False, False, False, None, None), (
+                    "intake requires a duration."
                 )
-            if requested_stack:
-                return CliRequest(requested_run, False, False, False, None), (
-                    "Cannot combine --stack and +duration."
+            if requested_mem:
+                return CliRequest(requested_run, False, False, False, False, None, None), (
+                    "Cannot combine mem and +duration."
                 )
-            requested_stack = True
+            if requested_intake:
+                return CliRequest(requested_run, False, False, False, False, None, None), (
+                    "Cannot combine intake and +duration."
+                )
+            if requested_config:
+                return CliRequest(requested_run, False, False, False, False, None, None), (
+                    "Cannot combine config and +duration."
+                )
+            requested_intake = True
             tokens[0] = tokens[0][1:]
             tokens_lower[0] = tokens_lower[0][1:]
         break
 
-    if sum([requested_clear, requested_start, requested_stack]) > 1:
-        return CliRequest(requested_run, False, False, False, None), (
-            "Cannot combine start, stack, and clear."
+    if sum([requested_run, requested_clear, requested_intake, requested_mem, requested_config]) > 1:
+        return CliRequest(requested_run, False, False, False, False, None, None), (
+            "Cannot combine run, intake, mem, config, and clear."
         )
 
-    if requested_run and requested_clear:
-        return CliRequest(requested_run, False, False, False, None), (
-            "Cannot combine run and clear."
-        )
-
-    if requested_run and any(token in {"clear", "0"} for token in tokens_lower):
-        return CliRequest(requested_run, False, False, False, None), (
-            "Cannot combine run and clear."
-        )
-
-    if requested_clear and "run" in tokens_lower:
-        return CliRequest(requested_run, False, False, False, None), (
-            "Cannot combine run and clear."
+    if requested_run and tokens:
+        return CliRequest(requested_run, False, False, False, False, None, None), (
+            "run does not accept a duration."
         )
 
     if requested_clear and tokens:
-        return CliRequest(requested_run, requested_clear, False, False, None), (
+        return CliRequest(requested_run, requested_clear, False, False, False, None, None), (
             "clear does not accept a duration."
         )
 
-    if requested_stack and not tokens:
-        return CliRequest(requested_run, requested_clear, requested_start, requested_stack, None), (
-            "stack requires a duration."
+    if requested_mem and any(token.startswith("+") for token in tokens_lower):
+        return CliRequest(requested_run, False, False, False, False, None, None), (
+            "Cannot combine mem and +duration."
         )
 
-    if requested_stack and any(token.startswith("+") for token in tokens_lower):
-        return CliRequest(requested_run, False, False, False, None), (
-            "Cannot combine --stack and +duration."
+    if requested_config and tokens:
+        return CliRequest(requested_run, False, False, False, False, None, None), (
+            "config does not accept a duration."
+        )
+
+    if requested_mem:
+        mem_duration = " ".join(tokens) if tokens else None
+        return (
+            CliRequest(
+                requested_run,
+                requested_clear,
+                requested_intake,
+                requested_mem,
+                requested_config,
+                None,
+                mem_duration,
+            ),
+            None,
+        )
+
+    if requested_config:
+        return (
+            CliRequest(
+                requested_run,
+                requested_clear,
+                requested_intake,
+                requested_mem,
+                requested_config,
+                None,
+                None,
+            ),
+            None,
         )
 
     duration = " ".join(tokens) if tokens else None
-    return CliRequest(requested_run, requested_clear, requested_start, requested_stack, duration), None
+    if duration is not None and not requested_intake:
+        requested_intake = True
+    return (
+        CliRequest(
+            requested_run,
+            requested_clear,
+            requested_intake,
+            requested_mem,
+            requested_config,
+            duration,
+            None,
+        ),
+        None,
+    )

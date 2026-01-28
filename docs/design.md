@@ -3,14 +3,13 @@
 ## Timer states
 
 - active: a timer is running (`finish_at` in the future).
-- expired: the stored `finish_at` is in the past (no auto-clear; an expired message is printed when checked).
-- cleared: no active timer (`finish_at`/`duration_sec` removed, `---` shown).
+- expired: a timer exists and has reached zero (`finish_at` in the past); show an expired label and a "you may drink coffee" message.
+- cleared: no active timer (`finish_at` removed, `---` shown).
 
 ## Clear command
 
 - The `clear` command is implemented (`decafe-timer clear`, `--clear`, or `0`).
-- Clearing removes `finish_at` and `duration_sec` from the state file.
-- `last_finished` is preserved as optional history.
+- Clearing removes `finish_at` from the state file.
 
 ## Unset display
 
@@ -19,22 +18,19 @@
 
 ## State persistence
 
-- `finish_at` is an absolute timestamp; it does not encode the original duration.
-- `duration_sec` stores the base duration from start (not changed by stack).
-- `last_duration_sec` stores the most recently started duration for `start` defaults.
-  - This value is updated only on `start` (not on `stack`).
-  - If no active timer exists, the last duration is used; if missing, default to 3h.
+- `finish_at` is an absolute timestamp; remaining time is computed as `finish_at - now`.
+- `mem_sec` stores the display memory (bar maximum and default intake amount).
+- If no `mem_sec` exists, default to 3h.
 
-## Start defaults
+## Memory defaults
 
-- `start` with no duration uses `last_duration_sec` when available, else defaults to 3h.
-- This mirrors the "resume last used duration" behavior even when there is no active timer.
+- `mem` sets the display memory for the bar and the default intake amount.
 
-## Stack (time add)
+## Intake (time add)
 
-- `stack` adds time to the remaining duration (e.g., remaining 2h + stack 5h = 7h remaining).
-- `duration_sec` is unchanged, and the bar scale is always based on `duration_sec`.
-- If the timer is expired, `stack` behaves as a new start using the last-started duration (or 3h).
+- `intake` adds time to the remaining duration (e.g., remaining 2h + intake 5h = 7h remaining).
+- If the timer is expired or cleared, `intake` starts a new timer from now.
+- If `intake` is called without a duration, it uses `mem_sec`.
 
 ## Module structure
 
@@ -48,10 +44,11 @@
 - `decafe-timer`: show a snapshot status if a timer exists; otherwise `---`.
 - `decafe-timer --run` (or `run`): live updating mode with a shrinking bar.
 - `decafe-timer clear` / `--clear` / `0`: remove the current timer, then show `---`.
-- `decafe-timer start [duration]`: start a new timer; if duration omitted, use `last_duration_sec` or 3h.
-- `decafe-timer --stack 5h` / `decafe-timer stack 5h` / `decafe-timer +5h`: add time to the remaining duration.
-- `start` / `stack` / `clear` are mutually exclusive.
-- `--stack` and `+5h` cannot be combined in the same invocation.
+- `decafe-timer intake [duration]`: add time to the remaining duration; if duration omitted, use `mem_sec`.
+- `decafe-timer +5h`: same as `intake 5h`.
+- `decafe-timer mem [duration]`: show or set the display memory for the bar.
+- `intake` / `mem` / `clear` are mutually exclusive.
+- `intake 5h` and `+5h` cannot be combined in the same invocation.
 - Output formats:
   - default: Remaining + Expires at + bar
   - `--one-line`: `HH:MM:SS` + bar
