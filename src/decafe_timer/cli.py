@@ -21,7 +21,7 @@ class CliRequest:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Caffeine clearance timer")
     parser.add_argument(
-        "duration",
+        "args",
         nargs="*",
         metavar="ARG",
         help=(
@@ -77,7 +77,7 @@ def parse_cli_args(argv=None) -> argparse.Namespace:
 
 
 def normalize_cli_request(args: argparse.Namespace) -> tuple[CliRequest, Optional[str]]:
-    tokens = list(getattr(args, "duration", []) or [])
+    tokens = list(getattr(args, "args", []) or [])
     tokens_lower = [token.strip().lower() for token in tokens]
     requested_run = False
     requested_clear = False

@@ -90,12 +90,6 @@ def _schedule_timer_seconds(remaining_sec: int, mem_sec: int):
     return finish_at, mem_sec
 
 
-def _schedule_timer(hours: int, minutes: int, seconds: int):
-    """Create a new timer, persist it, and return (finish_at, mem_sec)."""
-    duration_sec = duration_to_seconds(hours, minutes, seconds)
-    return _schedule_timer_seconds(duration_sec, duration_sec)
-
-
 # ------------------------------
 # Persistence helpers
 # ------------------------------
@@ -323,36 +317,6 @@ def clear_state():
 # ------------------------------
 # Timer core
 # ------------------------------
-def start_timer(
-    hours=0,
-    minutes=0,
-    seconds=0,
-    *,
-    one_line=False,
-    graph_only=False,
-    bar_style: str = BAR_STYLE_GREEK_CROSS,
-):
-    try:
-        intake_sec = duration_to_seconds(hours, minutes, seconds)
-        finish_at, mem_sec = _schedule_timer_seconds(intake_sec, intake_sec)
-    except ValueError as exc:
-        print(str(exc))
-        return
-
-    if not one_line and not graph_only:
-        print(
-            "Caffeine intake recorded. "
-            f"Clears at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-    run_timer_loop(
-        finish_at,
-        mem_sec,
-        one_line=one_line,
-        graph_only=graph_only,
-        bar_style=bar_style,
-    )
-
-
 def run_timer_loop(
     finish_at: Optional[datetime] = None,
     mem_sec: Optional[int] = None,
@@ -407,10 +371,11 @@ def _run_live_loop(
     was_cleared = False
 
     while True:
-        finish_at, mem_sec = load_state()
-        if finish_at is None:
+        loaded_finish_at, mem_sec = load_state()
+        if loaded_finish_at is None:
             was_cleared = True
             break
+        finish_at = loaded_finish_at
 
         now = datetime.now()
         remaining = finish_at - now
@@ -519,29 +484,6 @@ def _resolve_effective_render_flags(args) -> tuple[bool, bool]:
     if one_line and graph_only:
         graph_only = False
     return bool(one_line), bool(graph_only)
-
-
-def resume_timer(
-    *, one_line=False, graph_only=False, bar_style: str = BAR_STYLE_GREEK_CROSS
-):
-    finish_at, mem_sec = load_state()
-    if finish_at is None:
-        print(NO_ACTIVE_TIMER_MESSAGE)
-        return
-    if finish_at <= datetime.now():
-        _print_expired_message(finish_at, mem_sec)
-        return
-    if not one_line and not graph_only:
-        print(
-            f"Resuming caffeine clearance. Clears at {finish_at.strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-    run_timer_loop(
-        finish_at,
-        mem_sec,
-        one_line=one_line,
-        graph_only=graph_only,
-        bar_style=bar_style,
-    )
 
 
 # ------------------------------

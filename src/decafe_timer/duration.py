@@ -5,11 +5,8 @@ from datetime import timedelta
 
 
 DURATION_PATTERN = re.compile(r"(\d+)([hms])", re.IGNORECASE)
-FRACTION_SPLIT_PATTERN = re.compile(r"\s*/\s*")
-
 INVALID_DURATION_MESSAGE = (
-    "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS. "
-    "You can also use remaining/total like 3h/5h."
+    "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS."
 )
 INVALID_INTAKE_DURATION_MESSAGE = (
     "Invalid duration. Use AhBmCs (e.g. 2h30m) or HH:MM:SS."
@@ -68,53 +65,10 @@ def duration_to_seconds(hours: int, minutes: int, seconds: int) -> int:
     return int(timedelta(hours=hours, minutes=minutes, seconds=seconds).total_seconds())
 
 
-def parse_duration(duration_str: str):
-    """Parse duration; support remaining/total with a slash or a single duration.
-
-    Returns (remaining_seconds, total_seconds).
-    """
-    duration_str = duration_str.strip()
-    if not duration_str:
-        raise ValueError(INVALID_DURATION_MESSAGE)
-
-    fraction_parts = FRACTION_SPLIT_PATTERN.split(duration_str, maxsplit=1)
-    if len(fraction_parts) == 2:
-        remaining_raw, total_raw = fraction_parts
-        try:
-            rh, rm, rs = _parse_single_duration(remaining_raw)
-            th, tm, ts = _parse_single_duration(total_raw)
-        except ValueError:
-            raise ValueError(INVALID_DURATION_MESSAGE)
-
-        remaining_sec = duration_to_seconds(rh, rm, rs)
-        total_sec = duration_to_seconds(th, tm, ts)
-
-        if remaining_sec <= 0 or total_sec <= 0:
-            raise ValueError(
-                "Duration must be positive (parsed as remaining/total like 3h/5h)."
-            )
-        if remaining_sec > total_sec:
-            raise ValueError(
-                "Remaining duration cannot exceed total duration "
-                "(parsed as remaining/total like 3h/5h)."
-            )
-
-        return remaining_sec, total_sec
-
-    try:
-        h, m, s = _parse_single_duration(duration_str)
-    except ValueError:
-        raise ValueError(INVALID_DURATION_MESSAGE)
-    single_sec = duration_to_seconds(h, m, s)
-    return single_sec, single_sec
-
-
 def parse_simple_duration(duration_str: str) -> int:
     """Parse a single duration (no remaining/total). Returns seconds."""
     duration_str = duration_str.strip()
     if not duration_str:
-        raise ValueError(INVALID_INTAKE_DURATION_MESSAGE)
-    if FRACTION_SPLIT_PATTERN.search(duration_str):
         raise ValueError(INVALID_INTAKE_DURATION_MESSAGE)
     try:
         h, m, s = _parse_single_duration(duration_str)

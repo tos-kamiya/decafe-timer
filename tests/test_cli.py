@@ -1,7 +1,4 @@
-import pytest
-
 from decafe_timer.cli import normalize_cli_request, parse_cli_args
-from decafe_timer.duration import parse_duration
 
 
 def _request_from(argv):
@@ -143,26 +140,3 @@ def test_config_run_conflict():
     request, error = _request_from(["run", "config"])
     assert error is not None
     assert "Cannot combine run, intake, mem, config, and clear." in error
-
-
-def test_parse_single_duration():
-    remaining, total = parse_duration("1h30m")
-    assert remaining == 5400
-    assert total == 5400
-
-
-def test_parse_colon_format():
-    remaining, total = parse_duration("0:01:00")
-    assert remaining == 60
-    assert total == 60
-
-
-def test_parse_remaining_total():
-    remaining, total = parse_duration("3h/5h")
-    assert remaining == 10800
-    assert total == 18000
-
-
-def test_parse_invalid_zero():
-    with pytest.raises(ValueError):
-        parse_duration("0")
