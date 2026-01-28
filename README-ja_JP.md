@@ -3,8 +3,8 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/decafe-timer.svg)](https://pypi.org/project/decafe-timer)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/decafe-timer.svg)](https://pypi.org/project/decafe-timer)
 
-コーヒーブレイクやカフェイン摂取の間隔を管理する、軽量なCLIクールダウンタイマーです。
-カフェインを摂りすぎていないか、依存になっていないか気になる方のために作りました。
+体内のカフェインが抜けるまでの時間を管理する、軽量なCLIタイマーです。
+カフェインを摂りすぎていないか気になる方のために作りました。
 
 ![decafe-timer screenshot](https://raw.githubusercontent.com/tos-kamiya/decafe-timer/main/images/shot1.png)
 
@@ -19,40 +19,51 @@ pipx install decafe-timer
 ### 基本
 
 ```console
-decafe-timer 45m          # 新しいタイマーを始めてスナップショットを 1 回表示
-decafe-timer 3h/5h        # 3 時間残り / 5 時間のタイマーで開始
 decafe-timer              # タイマーがあればスナップショットを 1 回表示、なければ ---
-decafe-timer start        # 前回の期間で開始（初回は 3h）
-decafe-timer run 45m      # 新しいタイマーを始め、カウントダウンを表示し続ける
-decafe-timer run          # 進行中のタイマーをライブ表示で再開
-decafe-timer stack 5h     # 残り時間に加算する
-decafe-timer +5h          # stack 5h の短縮形
+decafe-timer mem 3h       # バーの基準時間（メモリ）を設定する
+decafe-timer mem          # 現在のメモリを表示する
+decafe-timer intake 45m   # カフェイン摂取量を追加する（未設定なら新規開始）
+decafe-timer intake       # メモリと同量を追加する
+decafe-timer +5h          # intake 5h の短縮形
 decafe-timer clear        # タイマーを消去して `---` 表示にする
+decafe-timer run          # 進行中のタイマーをライブ表示で再開
+decafe-timer config       # メモリ・バー・レイアウトを表示する
 ```
 
 ### オプション
 
 ```console
-decafe-timer --one-line        # ASCII 1 行表示を使う
-decafe-timer --graph-only      # ASCII バーのみのスナップショットを表示
-decafe-timer --bar-style blocks        # 以前のブロック表示を使う
-decafe-timer --bar-style counting-rod  # Counting Rod Numerals のバーを使う
+decafe-timer --layout one-line        # ASCII 1 行表示を使う（一時的）
+decafe-timer --layout graph-only      # ASCII バーのみのスナップショットを表示（一時的）
+decafe-timer --one-line               # --layout one-line の旧エイリアス（一時的）
+decafe-timer --graph-only             # --layout graph-only の旧エイリアス（一時的）
+decafe-timer --bar-style blocks        # 以前のブロック表示を使う（一時的）
+decafe-timer --bar-style counting-rod  # Counting Rod Numerals のバーを使う（一時的）
 decafe-timer --color=always    # TTY 以外でも ANSI を強制
 decafe-timer --color=never     # ANSI を無効化する
-decafe-timer --stack 5h        # 残り時間に加算する
-decafe-timer --run 45m         # `run` の別名 (カウントダウンを表示し続ける)
-decafe-timer --run             # `run` の別名 (ライブ表示で再開)
-decafe-timer --clear           # `clear` の別名 (`---` 表示にする)
-decafe-timer 0                 # 0 指定でタイマーを消去する
 decafe-timer --version         # バージョンを表示
+```
+
+### 設定の保存
+
+```console
+decafe-timer config --bar-style blocks       # 既定のバー表示を保存
+decafe-timer config --layout one-line        # 既定のレイアウトを保存
+decafe-timer config --layout graph-only      # 既定のレイアウトを保存
+decafe-timer config --one-line               # 旧レイアウト設定（保存）
+decafe-timer config --graph-only             # 旧レイアウト設定（保存）
 ```
 
 ### メモ
 
-- `start` / `stack` / `clear` は同時に使えません。
-- `stack` は残り時間だけを伸ばし、期間やバーの基準長は変えません。
-- 残り時間が期間より長い場合は、バーの末尾に `>>` が表示されます。
-- 期限切れ後の `stack` は、前回の期間（なければ 3h）で新規開始します。
+- `run` / `intake` / `mem` / `config` / `clear` は同時に使えません。
+- `intake` は残量だけを増やし、バーの基準長は変えません。
+- 期限切れ後の `intake` は新規開始になります。
+- `mem` が未設定の場合は 3h を使います。
+- `config --bar-style` と `config --layout` は既定値として保存されます。
+- `--bar-style` / `--layout` / `--one-line` / `--graph-only` は一時的に反映されます。
+- 残量がバーの基準より長い場合は、末尾に `>>` が表示されます。
+- `decafe-timer` は状態表示のみ。`decafe-timer 45m` はエラーです。
 
 ## ライセンス
 
