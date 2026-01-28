@@ -60,6 +60,8 @@ BROKEN_STATE_MESSAGE = "State file is invalid; ignoring it."
 
 DEFAULT_MEM_SEC = duration_to_seconds(3, 0, 0)
 DEFAULT_BAR_STYLE = BAR_STYLE_GREEK_CROSS
+DEFAULT_ONE_LINE = False
+DEFAULT_GRAPH_ONLY = False
 BAR_STYLE_CHOICES = (
     BAR_STYLE_GREEK_CROSS,
     BAR_STYLE_COUNTING_ROD,
@@ -84,7 +86,7 @@ def _schedule_timer_seconds(remaining_sec: int, mem_sec: int):
     if remaining_sec <= 0 or mem_sec <= 0:
         raise ValueError("Duration must be positive.")
     finish_at = datetime.now() + timedelta(seconds=remaining_sec)
-    save_state(finish_at, mem_sec, DEFAULT_BAR_STYLE)
+    save_state(finish_at, mem_sec)
     return finish_at, mem_sec
 
 
@@ -149,6 +151,22 @@ def _parse_mem_sec(value) -> Optional[int]:
     return mem_sec
 
 
+def _parse_bool(value) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        if value in (0, 1):
+            return bool(int(value))
+        return None
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "y", "on"}:
+            return True
+        if lowered in {"false", "0", "no", "n", "off"}:
+            return False
+    return None
+
+
 def _parse_bar_style(value) -> Optional[str]:
     if value is None:
         return None
@@ -168,6 +186,14 @@ def _resolve_bar_style(payload: dict) -> Optional[str]:
     return _parse_bar_style(payload.get("bar_style"))
 
 
+def _resolve_one_line(payload: dict) -> Optional[bool]:
+    return _parse_bool(payload.get("one_line"))
+
+
+def _resolve_graph_only(payload: dict) -> Optional[bool]:
+    return _parse_bool(payload.get("graph_only"))
+
+
 def _write_state_payload(payload: dict):
     state_file = _state_file()
     state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -179,16 +205,27 @@ def _write_state_payload(payload: dict):
 def save_state(
     finish_at: datetime,
     mem_sec: int,
-    bar_style: str,
 ):
     """Save finish time, display memory, and current time to cache."""
+    existing = _read_state_payload()
     now = datetime.now()
     payload = {
         "finish_at": finish_at.isoformat(),
         "mem_sec": int(mem_sec),
-        "bar_style": bar_style,
         "last_saved_at": now.isoformat(),
     }
+    if "bar_style" in existing:
+        bar_style = _resolve_bar_style(existing)
+        if bar_style is not None:
+            payload["bar_style"] = bar_style
+    if "one_line" in existing:
+        one_line = _resolve_one_line(existing)
+        if one_line is not None:
+            payload["one_line"] = one_line
+    if "graph_only" in existing:
+        graph_only = _resolve_graph_only(existing)
+        if graph_only is not None:
+            payload["graph_only"] = graph_only
     _write_state_payload(payload)
 
 
@@ -200,15 +237,22 @@ def load_state():
     return finish_at, mem_sec
 
 
-def save_mem(mem_sec: int, bar_style: Optional[str] = None):
+def save_mem(mem_sec: int):
     payload = _read_state_payload()
     finish_at_raw = payload.get("finish_at")
-    resolved_bar_style = bar_style or _resolve_bar_style(payload) or DEFAULT_BAR_STYLE
+    resolved_bar_style = _resolve_bar_style(payload)
+    resolved_one_line = _resolve_one_line(payload)
+    resolved_graph_only = _resolve_graph_only(payload)
     payload = {
         "mem_sec": int(mem_sec),
-        "bar_style": resolved_bar_style,
         "last_saved_at": datetime.now().isoformat(),
     }
+    if resolved_bar_style is not None:
+        payload["bar_style"] = resolved_bar_style
+    if resolved_one_line is not None:
+        payload["one_line"] = resolved_one_line
+    if resolved_graph_only is not None:
+        payload["graph_only"] = resolved_graph_only
     if finish_at_raw is not None:
         payload["finish_at"] = finish_at_raw
     _write_state_payload(payload)
@@ -224,15 +268,46 @@ def load_bar_style() -> str:
     return _resolve_bar_style(data) or DEFAULT_BAR_STYLE
 
 
+def load_render_flags() -> tuple[bool, bool]:
+    data = _read_state_payload()
+    one_line = _resolve_one_line(data)
+    graph_only = _resolve_graph_only(data)
+    return (
+        one_line if one_line is not None else DEFAULT_ONE_LINE,
+        graph_only if graph_only is not None else DEFAULT_GRAPH_ONLY,
+    )
+
+
+def save_render_config(
+    *, bar_style: str, one_line: bool, graph_only: bool, mem_sec: Optional[int]
+):
+    payload = {
+        "bar_style": bar_style,
+        "one_line": bool(one_line),
+        "graph_only": bool(graph_only),
+        "last_saved_at": datetime.now().isoformat(),
+    }
+    if mem_sec is not None:
+        payload["mem_sec"] = int(mem_sec)
+    finish_at_raw = _read_state_payload().get("finish_at")
+    if finish_at_raw is not None:
+        payload["finish_at"] = finish_at_raw
+    _write_state_payload(payload)
+
+
 def clear_state():
     payload = _read_state_payload()
     mem_sec = _resolve_mem_sec(payload)
     bar_style = _resolve_bar_style(payload)
-    if mem_sec is not None or bar_style is not None:
+    one_line = _resolve_one_line(payload)
+    graph_only = _resolve_graph_only(payload)
+    if mem_sec is not None or bar_style is not None or one_line is not None or graph_only is not None:
         _write_state_payload(
             {
                 **({"mem_sec": int(mem_sec)} if mem_sec is not None else {}),
                 "bar_style": bar_style or DEFAULT_BAR_STYLE,
+                **({"one_line": one_line} if one_line is not None else {}),
+                **({"graph_only": graph_only} if graph_only is not None else {}),
                 "last_saved_at": datetime.now().isoformat(),
             }
         )
@@ -434,6 +509,18 @@ def _resolve_effective_bar_style(args) -> str:
     return args.bar_style or load_bar_style()
 
 
+def _resolve_effective_render_flags(args) -> tuple[bool, bool]:
+    saved_one_line, saved_graph_only = load_render_flags()
+    one_line = args.one_line if args.one_line is not None else saved_one_line
+    graph_only = args.graph_only if args.graph_only is not None else saved_graph_only
+    if args.layout:
+        one_line = args.layout == "one-line"
+        graph_only = args.layout == "graph-only"
+    if one_line and graph_only:
+        graph_only = False
+    return bool(one_line), bool(graph_only)
+
+
 def resume_timer(
     *, one_line=False, graph_only=False, bar_style: str = BAR_STYLE_GREEK_CROSS
 ):
@@ -463,12 +550,19 @@ def resume_timer(
 def main(argv=None):
     args = parse_cli_args(argv)
     effective_bar_style = _resolve_effective_bar_style(args)
+    effective_one_line, effective_graph_only = _resolve_effective_render_flags(args)
     request, error = normalize_cli_request(args)
     if error:
         print(error)
         return
     args.run = request.run
-    resolved = _resolve_timer_state(args, request, effective_bar_style)
+    resolved = _resolve_timer_state(
+        args,
+        request,
+        effective_bar_style,
+        effective_one_line,
+        effective_graph_only,
+    )
     if resolved is None:
         return
     finish_at, mem_sec, new_timer_started = resolved
@@ -480,19 +574,27 @@ def main(argv=None):
             mem_sec,
             new_timer_started,
             bar_style=effective_bar_style,
+            one_line=effective_one_line,
+            graph_only=effective_graph_only,
         )
         return
 
     _print_snapshot_status(
         finish_at,
         mem_sec,
-        one_line=args.one_line,
-        graph_only=args.graph_only,
+        one_line=effective_one_line,
+        graph_only=effective_graph_only,
         bar_style=effective_bar_style,
         use_ansi=_should_use_ansi(args),
     )
 
-def _resolve_timer_state(args, request: CliRequest, bar_style: str):
+def _resolve_timer_state(
+    args,
+    request: CliRequest,
+    bar_style: str,
+    one_line: bool,
+    graph_only: bool,
+):
     finish_at = None
     mem_sec = None
     new_timer_started = False
@@ -505,8 +607,48 @@ def _resolve_timer_state(args, request: CliRequest, bar_style: str):
     if request.config:
         mem_sec = load_mem_sec()
         saved_bar_style = load_bar_style()
+        saved_one_line, saved_graph_only = load_render_flags()
+        next_bar_style = saved_bar_style
+        next_one_line = saved_one_line
+        next_graph_only = saved_graph_only
+        if args.bar_style is not None:
+            next_bar_style = args.bar_style
+        if args.layout:
+            next_one_line = args.layout == "one-line"
+            next_graph_only = args.layout == "graph-only"
+        else:
+            if args.one_line is not None:
+                next_one_line = bool(args.one_line)
+                if args.graph_only is None:
+                    next_graph_only = False
+            if args.graph_only is not None:
+                next_graph_only = bool(args.graph_only)
+                if args.one_line is None:
+                    next_one_line = False
+        if (
+            next_bar_style != saved_bar_style
+            or next_one_line != saved_one_line
+            or next_graph_only != saved_graph_only
+        ):
+            save_render_config(
+                bar_style=next_bar_style,
+                one_line=next_one_line,
+                graph_only=next_graph_only,
+                mem_sec=mem_sec,
+            )
+            saved_bar_style = next_bar_style
+            saved_one_line = next_one_line
+            saved_graph_only = next_graph_only
+        layout = (
+            "graph-only"
+            if saved_graph_only
+            else "one-line"
+            if saved_one_line
+            else "default"
+        )
         print(f"Memory: {format_remaining(mem_sec)}")
         print(f"Bar style: {saved_bar_style}")
+        print(f"Layout: {layout}")
         return None
 
     if request.mem:
@@ -520,7 +662,7 @@ def _resolve_timer_state(args, request: CliRequest, bar_style: str):
             message = str(exc)
             print(message)
             return None
-        save_mem(mem_sec, bar_style=bar_style)
+        save_mem(mem_sec)
         print(f"Memory set to: {format_remaining(mem_sec)}")
         return None
 
@@ -539,11 +681,11 @@ def _resolve_timer_state(args, request: CliRequest, bar_style: str):
         now = datetime.now()
         if finish_at is None or finish_at <= now:
             finish_at = now + timedelta(seconds=added_sec)
-            save_state(finish_at, mem_sec, bar_style)
+            save_state(finish_at, mem_sec)
             new_timer_started = True
         else:
             finish_at = finish_at + timedelta(seconds=added_sec)
-            save_state(finish_at, mem_sec, bar_style)
+            save_state(finish_at, mem_sec)
         return finish_at, mem_sec, new_timer_started
 
     finish_at, mem_sec = load_state()
@@ -555,7 +697,14 @@ def _resolve_timer_state(args, request: CliRequest, bar_style: str):
 
 
 def _run_live_mode(
-    args, finish_at, mem_sec, new_timer_started, *, bar_style: str
+    args,
+    finish_at,
+    mem_sec,
+    new_timer_started,
+    *,
+    bar_style: str,
+    one_line: bool,
+    graph_only: bool,
 ):
     if finish_at > datetime.now():
         if new_timer_started:
@@ -571,8 +720,8 @@ def _run_live_mode(
     run_timer_loop(
         finish_at,
         mem_sec,
-        one_line=args.one_line,
-        graph_only=args.graph_only,
+        one_line=one_line,
+        graph_only=graph_only,
         bar_style=bar_style,
         use_ansi=_should_use_ansi(args),
     )

@@ -37,11 +37,10 @@ def test_clear_alias():
 
 def test_clear_zero_alias():
     request, error = _request_from(["0"])
-    assert error is None
+    assert error is not None
+    assert "Duration requires an intake command" in error
     assert request.run is False
-    assert request.clear is True
-    assert request.config is False
-    assert request.duration is None
+    assert request.clear is False
 
 
 def test_clear_with_duration_rejected():
@@ -67,6 +66,25 @@ def test_intake_plus_duration():
     assert request.intake is True
     assert request.config is False
     assert request.duration == "10m"
+
+
+def test_duration_requires_intake():
+    request, error = _request_from(["10m"])
+    assert error is not None
+    assert "Duration requires an intake command" in error
+    assert request.intake is False
+    assert request.run is False
+
+
+def test_no_command_is_allowed():
+    request, error = _request_from([])
+    assert error is None
+    assert request.run is False
+    assert request.clear is False
+    assert request.intake is False
+    assert request.mem is False
+    assert request.config is False
+    assert request.duration is None
 
 
 def test_intake_without_duration():

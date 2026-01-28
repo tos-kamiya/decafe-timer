@@ -8,7 +8,7 @@
 
 ## Clear command
 
-- The `clear` command is implemented (`decafe-timer clear`, `--clear`, or `0`).
+- The `clear` command is implemented (`decafe-timer clear`).
 - Clearing removes `finish_at` from the state file.
 
 ## Unset display
@@ -20,6 +20,7 @@
 
 - `finish_at` is an absolute timestamp; remaining time is computed as `finish_at - now`.
 - `mem_sec` stores the display memory (bar maximum and default intake amount).
+- `bar_style`, `one_line`, and `graph_only` are stored when saved via `config`.
 - If no `mem_sec` exists, default to 3h.
 
 ## Memory defaults
@@ -34,7 +35,7 @@
 
 ## Module structure
 
-- `src/decafe_timer/cli.py`: CLI argument parsing and normalization into a `CliRequest` (aliases for `run`/`clear`, duration string assembly, conflict checks).
+- `src/decafe_timer/cli.py`: CLI argument parsing and normalization into a `CliRequest` (subcommand parsing, conflict checks).
 - `src/decafe_timer/duration.py`: Duration parsing helpers for `HH:MM:SS`, `AhBmCs`, and `remaining/total` forms.
 - `src/decafe_timer/main.py`: Timer lifecycle, state persistence, and entry point wiring.
 - `src/decafe_timer/render.py`: Bar rendering styles, ANSI color handling, and overflow suffix logic.
@@ -42,19 +43,22 @@
 ## CLI expectations
 
 - `decafe-timer`: show a snapshot status if a timer exists; otherwise `---`.
-- `decafe-timer --run` (or `run`): live updating mode with a shrinking bar.
-- `decafe-timer clear` / `--clear` / `0`: remove the current timer, then show `---`.
+- `decafe-timer run`: live updating mode with a shrinking bar.
+- `decafe-timer clear`: remove the current timer, then show `---`.
 - `decafe-timer intake [duration]`: add time to the remaining duration; if duration omitted, use `mem_sec`.
 - `decafe-timer +5h`: same as `intake 5h`.
 - `decafe-timer mem [duration]`: show or set the display memory for the bar.
-- `intake` / `mem` / `clear` are mutually exclusive.
+- `decafe-timer config`: show saved memory + bar style + layout; `config --bar-style` and `config --layout` persist settings.
+- `decafe-timer 3h`: invalid; duration requires `intake` or `+duration`.
+- `run` / `intake` / `mem` / `config` / `clear` are mutually exclusive.
 - `intake 5h` and `+5h` cannot be combined in the same invocation.
 - Output formats:
-  - default: Remaining + Expires at + bar
-  - `--one-line`: `HH:MM:SS` + bar
-  - `--graph-only`: bar only
+  - default: Remaining + Clears at + bar
+  - `--layout one-line` (or `--one-line`): `HH:MM:SS` + bar
+  - `--layout graph-only` (or `--graph-only`): bar only
 - Bar styles: `greek-cross` (default), `counting-rod`, `blocks`.
 - ANSI colors are enabled by default when stdout is a TTY; control via `--color`.
+- `--bar-style` / `--layout` / `--one-line` / `--graph-only` are temporary unless used with `config`.
 
 ## Bar rendering
 

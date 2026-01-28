@@ -38,12 +38,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--one-line",
         action="store_true",
+        default=None,
         help="Use the single-line ASCII format (time + bar).",
     )
     parser.add_argument(
         "--graph-only",
         action="store_true",
+        default=None,
         help="Show only the ASCII bar (no time).",
+    )
+    parser.add_argument(
+        "--layout",
+        choices=("default", "one-line", "graph-only"),
+        default=None,
+        help="Pick the layout (default, one-line, graph-only).",
     )
     parser.add_argument(
         "--bar-style",
@@ -88,7 +96,7 @@ def normalize_cli_request(args: argparse.Namespace) -> tuple[CliRequest, Optiona
             requested_run = True
             pop_token()
             continue
-        if first in {"clear", "0"}:
+        if first == "clear":
             requested_clear = True
             pop_token()
             continue
@@ -182,7 +190,9 @@ def normalize_cli_request(args: argparse.Namespace) -> tuple[CliRequest, Optiona
 
     duration = " ".join(tokens) if tokens else None
     if duration is not None and not requested_intake:
-        requested_intake = True
+        return CliRequest(requested_run, False, False, False, False, None, None), (
+            "Duration requires an intake command (use intake 3h or +3h)."
+        )
     return (
         CliRequest(
             requested_run,
